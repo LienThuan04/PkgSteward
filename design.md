@@ -1,3 +1,5 @@
+> **Disclaimer:** This is a design reference written for Manager NPM. It describes a visual language inspired by Pinterest's public website and is used as the source of the frontend's default theme preset. Manager NPM is not affiliated with, endorsed by, or sponsored by Pinterest, Inc. "Pinterest" is a trademark of Pinterest, Inc. Pin Sans is Pinterest's proprietary typeface and is not included in this project; the app uses Inter instead.
+
 ## Overview
 
 Pinterest's marketing system is built around a single instructional principle: get out of the photograph's way. The chrome is a quiet warm-cream neutral palette (`{colors.surface-soft}`, `{colors.surface-card}`, `{colors.canvas}`) carrying typography in Pinterest's proprietary Pin Sans face, with Pinterest Red (`{colors.primary}` — `#e60023`) reserved exclusively for the "Sign up" CTA, the active-tab indicator, and the sticky top-nav anchor. Every other surface is allowed to fade behind the imagery — pin tiles, category tiles, content thumbnails, profile shots — that constitutes the actual product.
