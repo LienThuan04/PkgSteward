@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { GlobalRegistry } from '@/global-packages/registry/global-registry';
 import type { IGlobalRegistryRequest } from '@/global-packages/registry/global-registry';
 import { expectGlobalReason } from '@/global-packages/__fixtures__/global-adapters';
+import { ProjectRegistry } from '@/projects/registry/project-registry';
 
 const integrity = `sha512-${Buffer.alloc(64, 1).toString('base64')}`;
 const request = (
@@ -97,6 +98,8 @@ describe('fixed-origin global registry', () => {
       requestedVersion: '1.2.3',
       bins: [{ name: 'test-tool', target: 'bin/cli.js' }],
       integrity,
+      engines: null,
+      deprecated: false,
     });
     expect(manifestHash).toMatch(/^[a-f0-9]{64}$/);
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -116,6 +119,7 @@ describe('fixed-origin global registry', () => {
       package: '@test/tool',
       versions: ['1.2.3', '2.0.0'],
       tags: { latest: '2.0.0', old: '1.2.3' },
+      deprecatedVersions: [],
     });
     expect(fetcher).toHaveBeenCalledWith(
       'https://registry.npmjs.org/%40test%2Ftool',
@@ -249,6 +253,86 @@ describe('fixed-origin global registry', () => {
 });
 
 describe('registry response validation and bounds', () => {
+  it.each([
+    { deprecatedVersions: ['9.0.0'] },
+    { deprecatedVersions: ['1.2.3', '1.2.3'] },
+  ])(
+    'rejects invalid deprecated-version membership/duplicates %p',
+    async ({ deprecatedVersions }) => {
+      const metadata = jest
+        .spyOn(ProjectRegistry.prototype, 'getPackageMetadata')
+        .mockResolvedValue({
+          versions: ['1.2.3'],
+          distTags: {},
+          deprecatedVersions,
+        });
+      try {
+        await expectGlobalReason(
+          () =>
+            new GlobalRegistry(mockFetch()).getVersions(
+              request(),
+              new AbortController().signal,
+            ),
+          'REGISTRY_INVALID_RESPONSE',
+        );
+      } finally {
+        metadata.mockRestore();
+      }
+    },
+  );
+  it.each([
+    [{ engines: { node: '>=22' }, deprecated: 'TEST obsolete' }, '>=22', true],
+    [{ engines: {}, deprecated: '' }, null, false],
+    [{}, null, false],
+  ])(
+    'projects npm engine and deprecation facts %p',
+    async (patch, engines, deprecated) => {
+      const fetcher = mockFetch().mockResolvedValue(json(manifest(patch)));
+      const target = await new GlobalRegistry(fetcher).getTarget(
+        request(),
+        '1.2.3',
+        new AbortController().signal,
+      );
+      expect(target).toMatchObject({ engines, deprecated });
+    },
+  );
+  it.each([
+    { engines: null },
+    { engines: [] },
+    { engines: '>=22' },
+    { engines: { node: null } },
+    { engines: { node: 22 } },
+    { engines: { node: '' } },
+    { engines: { node: '  ' } },
+    { deprecated: null },
+    { deprecated: false },
+    { deprecated: 1 },
+  ])('rejects malformed engine/deprecation fields %p', async (patch) => {
+    await expectGlobalReason(
+      () =>
+        new GlobalRegistry(
+          mockFetch().mockResolvedValue(json(manifest(patch))),
+        ).getTarget(request(), '1.2.3', new AbortController().signal),
+      'REGISTRY_INVALID_RESPONSE',
+    );
+  });
+  it('projects deprecated versions from package metadata', async () => {
+    const fetcher = mockFetch().mockResolvedValue(
+      json(
+        packument({
+          versions: {
+            '1.2.3': { deprecated: 'TEST obsolete' },
+            '2.0.0': { deprecated: '' },
+          },
+        }),
+      ),
+    );
+    const versions = await new GlobalRegistry(fetcher).getVersions(
+      request(),
+      new AbortController().signal,
+    );
+    expect(versions.deprecatedVersions).toEqual(['1.2.3']);
+  });
   it.each([
     { name: 'other' },
     { version: '9.0.0' },

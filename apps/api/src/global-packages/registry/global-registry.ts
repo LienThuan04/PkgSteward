@@ -167,13 +167,15 @@ export class GlobalRegistry {
         signal,
       );
       signal.throwIfAborted();
-      const { versions, distTags } = metadata;
+      const { versions, distTags, deprecatedVersions = [] } = metadata;
       if (versions.length > 10_000 || Object.keys(distTags).length > 10_000)
         throw fail('LIMIT_EXCEEDED');
       const known = new Set(versions);
       if (
         known.size !== versions.length ||
         versions.some((version) => !isGlobalExactVersion(version)) ||
+        new Set(deprecatedVersions).size !== deprecatedVersions.length ||
+        deprecatedVersions.some((version) => !known.has(version)) ||
         Object.entries(distTags).some(
           ([tag, version]) =>
             !isGlobalTargetVersion(tag) ||
@@ -182,13 +184,13 @@ export class GlobalRegistry {
         )
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
-      // Keep legacy payloads until npm-self metadata is projected by the reader.
       return {
         manager: input.manager,
         package: input.packageName,
         versions,
         tags: distTags,
-      } as IGlobalVersions;
+        deprecatedVersions,
+      };
     });
   }
 
@@ -249,11 +251,15 @@ export class GlobalRegistry {
         !isProjectRecord(raw) ||
         raw.name !== input.packageName ||
         raw.version !== exact ||
-        !validDist(raw.dist)
+        !validDist(raw.dist) ||
+        (raw.engines !== undefined && !isProjectRecord(raw.engines)) ||
+        (isProjectRecord(raw.engines) &&
+          raw.engines.node !== undefined &&
+          (typeof raw.engines.node !== 'string' || !raw.engines.node.trim())) ||
+        (raw.deprecated !== undefined && typeof raw.deprecated !== 'string')
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
       try {
-        // Target engines/deprecation are projected with the npm-self reader.
         return {
           name: input.packageName,
           version: exact,
@@ -261,7 +267,13 @@ export class GlobalRegistry {
           integrity: raw.dist.integrity,
           bins: normalizeGlobalBins(input.packageName, raw.bin),
           manifestHash: createHash('sha256').update(bytes).digest('hex'),
-        } as IGlobalTargetFacts;
+          engines:
+            isProjectRecord(raw.engines) && typeof raw.engines.node === 'string'
+              ? raw.engines.node
+              : null,
+          deprecated:
+            typeof raw.deprecated === 'string' && raw.deprecated !== '',
+        };
       } catch {
         throw fail('REGISTRY_INVALID_RESPONSE');
       }
