@@ -173,8 +173,8 @@ describe('M7 ready preview store', () => {
     store.put(testPreview(), facts);
     const retained = store.get(TEST_PREVIEW_ID).facts;
     const files = [
-      retained.current.manifest.file,
-      ...retained.current.binIdentities,
+      retained.current!.manifest.file,
+      ...retained.current!.binIdentities,
       ...retained.location.tool.identities,
       ...retained.location.configIdentities.map((identity) => identity.file),
       ...retained.locations!.flatMap((location) => [
@@ -194,9 +194,9 @@ describe('M7 ready preview store', () => {
     expect(() => structuredClone(retained)).not.toThrow();
     expect(() => assertGlobalPreviewUnchanged(retained, facts)).not.toThrow();
     nativeStat.ino = 99;
-    retained.current.manifest.file.stat.ino = 77;
+    retained.current!.manifest.file.stat.ino = 77;
     expect(
-      store.get(TEST_PREVIEW_ID).facts.current.manifest.file.stat.ino,
+      store.get(TEST_PREVIEW_ID).facts.current!.manifest.file.stat.ino,
     ).toBe(2);
   });
 
@@ -267,7 +267,7 @@ describe('M7 ready preview store', () => {
     const second = store.get(TEST_PREVIEW_ID);
     expect(second.preview.confirmText).toBe('REMOVE GLOBAL npm test-tool');
     expect(second.preview.risk).toEqual(getGlobalRisk());
-    expect(second.facts.current.version).toBe('1.0.0');
+    expect(second.facts.current!.version).toBe('1.0.0');
     expect(second.facts.binOwners).toHaveLength(1);
   });
 
@@ -385,31 +385,31 @@ const changes: [string, FactsChange][] = [
   [
     'package identity',
     (f) => {
-      f.current.packageRoot += '-moved';
+      f.current!.packageRoot += '-moved';
     },
   ],
   [
     'current version',
     (f) => {
-      f.current.version = '1.0.1';
+      f.current!.version = '1.0.1';
     },
   ],
   [
     'current manifest',
     (f) => {
-      f.current.manifest.sha256 += '-changed';
+      f.current!.manifest.sha256 += '-changed';
     },
   ],
   [
     'current bins',
     (f) => {
-      f.current.bins[0].target = 'other.js';
+      f.current!.bins[0].target = 'other.js';
     },
   ],
   [
     'shim identity',
     (f) => {
-      f.current.binIdentities = [];
+      f.current!.binIdentities = [];
     },
   ],
   [
@@ -675,19 +675,19 @@ const pnpmChanges: [string, FactsChange][] = [
   [
     'current group identity',
     (f) => {
-      f.current.pnpmGroup!.directory.stat.ino = 99;
+      f.current!.pnpmGroup!.directory.stat.ino = 99;
     },
   ],
   [
     'current group disappearance',
     (f) => {
-      delete f.current.pnpmGroup;
+      delete f.current!.pnpmGroup;
     },
   ],
   [
     'pnpm shim identity',
     (f) => {
-      f.current.binIdentities[0].stat.ino = 99;
+      f.current!.binIdentities[0].stat.ino = 99;
     },
   ],
 ];

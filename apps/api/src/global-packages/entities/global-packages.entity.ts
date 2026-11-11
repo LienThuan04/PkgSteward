@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exclude, Expose, Type } from 'class-transformer';
 import type { IRisk } from '@/core/risk/interfaces/risk.types';
 import {
@@ -19,6 +19,9 @@ import type {
   IGlobalPreview,
   IGlobalSnapshot,
   IGlobalVersions,
+  IGlobalNpmVersion,
+  IGlobalNpmPreview,
+  IGlobalNpmRepair,
 } from '@/global-packages/interfaces/global-packages.types';
 
 @Exclude()
@@ -76,7 +79,56 @@ export class GlobalPackageEntity implements IGlobalPackage {
   reason!: IGlobalPackage['reason'];
 }
 @Exclude()
+export class GlobalNpmVersionEntity implements IGlobalNpmVersion {
+  @Expose() @ApiProperty() bundledVersion!: string;
+  @Expose() @ApiProperty({ type: String, nullable: true }) overlayVersion!:
+    string | null;
+  @Expose() @ApiProperty({ type: String, nullable: true }) terminalVersion!:
+    string | null;
+  @Expose() @ApiProperty() prefix!: string;
+  @Expose()
+  @ApiProperty({
+    enum: ['absent', 'present', 'broken', 'linked', 'unsupported'],
+  })
+  overlayState!: IGlobalNpmVersion['overlayState'];
+  @Expose()
+  @ApiProperty({ enum: ['verified', 'unverified'] })
+  delegation!: IGlobalNpmVersion['delegation'];
+  @Expose()
+  @ApiProperty({ type: String, enum: [...GLOBAL_REASON_CODES], nullable: true })
+  reason!: IGlobalNpmVersion['reason'];
+}
+@Exclude()
+export class GlobalNpmPreviewEntity implements IGlobalNpmPreview {
+  @Expose() @ApiProperty() appVersion!: string;
+  @Expose() @ApiProperty({ type: String, nullable: true }) terminalBefore!:
+    string | null;
+  @Expose() @ApiProperty() terminalAfter!: string;
+  @Expose() @ApiProperty() prefix!: string;
+  @Expose() @ApiProperty({ type: [String] }) repairTargets!: string[];
+}
+@Exclude()
+export class GlobalNpmRepairFailureEntity {
+  @Expose() @ApiProperty() path!: string;
+  @Expose() @ApiProperty({ enum: [...GLOBAL_REASON_CODES] }) code!: NonNullable<
+    IGlobalNpmRepair['failed']
+  >['code'];
+}
+@Exclude()
+export class GlobalNpmRepairEntity implements IGlobalNpmRepair {
+  @Expose() @ApiProperty({ type: [String] }) deleted!: string[];
+  @Expose()
+  @ApiProperty({ type: GlobalNpmRepairFailureEntity, nullable: true })
+  @Type(() => GlobalNpmRepairFailureEntity)
+  failed!: GlobalNpmRepairFailureEntity | null;
+  @Expose() @ApiProperty({ type: [String] }) remaining!: string[];
+}
+@Exclude()
 export class GlobalManagerInventoryEntity implements IGlobalManagerInventory {
+  @Expose()
+  @ApiPropertyOptional({ type: GlobalNpmVersionEntity })
+  @Type(() => GlobalNpmVersionEntity)
+  npmVersion?: GlobalNpmVersionEntity;
   @Expose()
   @ApiProperty({ enum: [...GLOBAL_MANAGERS] })
   manager!: IGlobalManagerInventory['manager'];
@@ -107,6 +159,7 @@ export class GlobalSnapshotEntity implements IGlobalSnapshot {
 }
 @Exclude()
 export class GlobalVersionsEntity implements IGlobalVersions {
+  @Expose() @ApiProperty({ type: [String] }) deprecatedVersions!: string[];
   @Expose()
   @ApiProperty({ enum: [...GLOBAL_MANAGERS] })
   manager!: IGlobalVersions['manager'];
@@ -118,6 +171,10 @@ export class GlobalVersionsEntity implements IGlobalVersions {
 }
 @Exclude()
 export class GlobalPreviewEntity implements IGlobalPreview {
+  @Expose()
+  @ApiPropertyOptional({ type: GlobalNpmPreviewEntity })
+  @Type(() => GlobalNpmPreviewEntity)
+  npm?: GlobalNpmPreviewEntity;
   @Expose() @ApiProperty({ format: 'uuid' }) previewId!: string;
   @Expose() @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @Expose() @ApiProperty({ format: 'date-time' }) expiresAt!: string;
@@ -129,7 +186,8 @@ export class GlobalPreviewEntity implements IGlobalPreview {
   @ApiProperty({ enum: [...GLOBAL_ACTIONS] })
   action!: IGlobalPreview['action'];
   @Expose() @ApiProperty() package!: string;
-  @Expose() @ApiProperty() currentVersion!: string;
+  @Expose() @ApiProperty({ type: String, nullable: true }) currentVersion!:
+    string | null;
   @Expose() @ApiProperty({ type: String, nullable: true }) requestedVersion!:
     string | null;
   @Expose() @ApiProperty({ type: String, nullable: true }) targetVersion!:
@@ -164,6 +222,10 @@ export class GlobalJobEntity
   extends GlobalJobStartEntity
   implements IGlobalJob
 {
+  @Expose()
+  @ApiPropertyOptional({ type: GlobalNpmRepairEntity, nullable: true })
+  @Type(() => GlobalNpmRepairEntity)
+  npmRepair?: GlobalNpmRepairEntity | null;
   @Expose()
   @ApiProperty({ enum: [...GLOBAL_JOB_KINDS] })
   kind!: IGlobalJob['kind'];

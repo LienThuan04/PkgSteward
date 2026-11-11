@@ -12,7 +12,7 @@ import type {
 export const GLOBAL_MANAGERS = ['npm', 'pnpm'] as const;
 export type GlobalManager = (typeof GLOBAL_MANAGERS)[number];
 export const GLOBAL_DISABLED_MANAGERS: readonly GlobalManager[] = [];
-export const GLOBAL_ACTIONS = ['remove', 'change'] as const;
+export const GLOBAL_ACTIONS = ['remove', 'change', 'repair'] as const;
 export type GlobalAction = (typeof GLOBAL_ACTIONS)[number];
 export const GLOBAL_JOB_KINDS = [
   'inventory',
@@ -46,6 +46,16 @@ export const GLOBAL_REASON_CODES = [
   'MANAGER_DISABLED',
   'PNPM_GLOBAL_NOT_CONFIGURED',
   'GLOBAL_GROUP_UNSUPPORTED',
+  'NPM_PREFIX_IS_NODE_DIR',
+  'NPM_OVERLAY_ABSENT',
+  'NPM_OVERLAY_NOT_BROKEN',
+  'NPM_DELEGATION_UNVERIFIED',
+  'TARGET_VERSION_UNSUPPORTED',
+  'ENGINE_UNSUPPORTED',
+  'FILE_IN_USE',
+  'ACCESS_DENIED',
+  'DELETE_FAILED',
+  'PATH_TOO_LONG',
 ] as const;
 export type GlobalReasonCode = (typeof GLOBAL_REASON_CODES)[number];
 export const GLOBAL_WARNING_CODES = [
@@ -56,6 +66,7 @@ export const GLOBAL_WARNING_CODES = [
   'GLOBAL_CODE_EXECUTION',
   'GLOBAL_CONSUMERS_UNKNOWN',
   'PROCESS_ESCAPE_RESIDUAL',
+  'TERMINAL_NPM_SWITCH',
 ] as const;
 export type GlobalWarningCode = (typeof GLOBAL_WARNING_CODES)[number];
 
@@ -94,6 +105,27 @@ export interface IGlobalPackage {
   status: 'manageable' | 'protected' | 'linked' | 'invalid';
   reason: GlobalReasonCode | null;
 }
+export interface IGlobalNpmVersion {
+  bundledVersion: string;
+  overlayVersion: string | null;
+  terminalVersion: string | null;
+  prefix: string;
+  overlayState: 'absent' | 'present' | 'broken' | 'linked' | 'unsupported';
+  delegation: 'verified' | 'unverified';
+  reason: GlobalReasonCode | null;
+}
+export interface IGlobalNpmPreview {
+  appVersion: string;
+  terminalBefore: string | null;
+  terminalAfter: string;
+  prefix: string;
+  repairTargets: string[];
+}
+export interface IGlobalNpmRepair {
+  deleted: string[];
+  failed: { path: string; code: GlobalReasonCode } | null;
+  remaining: string[];
+}
 export interface IGlobalManagerInventory {
   manager: GlobalManager;
   version: string | null;
@@ -102,6 +134,7 @@ export interface IGlobalManagerInventory {
   globalRoot: string | null;
   binDir: string | null;
   packages: IGlobalPackage[];
+  npmVersion?: IGlobalNpmVersion;
 }
 export interface IGlobalSnapshot {
   revision: string;
@@ -114,6 +147,7 @@ export interface IGlobalVersions {
   package: string;
   versions: string[];
   tags: Record<string, string>;
+  deprecatedVersions: string[];
 }
 export interface IGlobalPreview {
   previewId: string;
@@ -123,7 +157,7 @@ export interface IGlobalPreview {
   managerVersion: string;
   action: GlobalAction;
   package: string;
-  currentVersion: string;
+  currentVersion: string | null;
   requestedVersion: string | null;
   targetVersion: string | null;
   globalRoot: string;
@@ -132,6 +166,7 @@ export interface IGlobalPreview {
   warningCodes: GlobalWarningCode[];
   risk: IRisk;
   confirmText: string;
+  npm?: IGlobalNpmPreview;
 }
 export interface IGlobalJobStart extends IGlobalActivityRequest {
   jobId: string;
@@ -165,5 +200,6 @@ export interface IGlobalJob extends IGlobalJobStart {
   droppedBytes: number;
   preview: IGlobalPreview | null;
   versions: IGlobalVersions | null;
+  npmRepair?: IGlobalNpmRepair | null;
 }
 export type IGlobalLogPage = IRunLogPage;

@@ -182,12 +182,13 @@ export class GlobalRegistry {
         )
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
+      // Keep legacy payloads until npm-self metadata is projected by the reader.
       return {
         manager: input.manager,
         package: input.packageName,
         versions,
         tags: distTags,
-      };
+      } as IGlobalVersions;
     });
   }
 
@@ -252,6 +253,7 @@ export class GlobalRegistry {
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
       try {
+        // Target engines/deprecation are projected with the npm-self reader.
         return {
           name: input.packageName,
           version: exact,
@@ -259,7 +261,7 @@ export class GlobalRegistry {
           integrity: raw.dist.integrity,
           bins: normalizeGlobalBins(input.packageName, raw.bin),
           manifestHash: createHash('sha256').update(bytes).digest('hex'),
-        };
+        } as IGlobalTargetFacts;
       } catch {
         throw fail('REGISTRY_INVALID_RESPONSE');
       }

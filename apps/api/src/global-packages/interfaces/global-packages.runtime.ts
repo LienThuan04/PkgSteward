@@ -105,15 +105,63 @@ export interface IGlobalTargetFacts {
   manifestHash: string;
   integrity: string;
   bins: IGlobalBin[];
+  engines: string | null;
+  deprecated: boolean;
+}
+export const NPM_SHIM_NAMES = [
+  'npm',
+  'npm.cmd',
+  'npm.ps1',
+  'npx',
+  'npx.cmd',
+  'npx.ps1',
+] as const;
+export type NpmShimName = (typeof NPM_SHIM_NAMES)[number];
+// lstat/realpath results supplied by the reader, including negative observations.
+// Directory identity uses dev/ino/type; file identity additionally pins content.
+export interface INpmPathFacts {
+  path: string;
+  realPath: string;
+  type: 'file' | 'directory' | 'other';
+  reparse: boolean;
+  identity: IRunnerFileIdentity;
+  sha256: string | null;
+  text: string | null;
+}
+export interface INpmShimFacts {
+  name: NpmShimName;
+  entry: INpmPathFacts | null;
+}
+export interface INpmSelfFacts {
+  nodeVersion: string;
+  nodeDir: string;
+  packageDir: string;
+  prefixResolved: string;
+  prefixReal: string;
+  protectedPaths: string[];
+  prefixDirectory: INpmPathFacts;
+  rootDirectory: INpmPathFacts;
+  bundledVersion: string;
+  bundledIdentities: IGlobalConfigIdentity[];
+  nodeDirShims: INpmShimFacts[];
+  prefixScript: IGlobalConfigIdentity | null;
+  overlay: {
+    directory: INpmPathFacts;
+    package: IGlobalPackageFacts | null;
+  } | null;
+  shims: INpmShimFacts[];
+  retired: INpmPathFacts[];
+  repairTargets: INpmPathFacts[];
 }
 export interface IGlobalPreviewFacts {
   location: IGlobalLocation;
-  current: IGlobalPackageFacts;
+  current: IGlobalPackageFacts | null;
   target: IGlobalTargetFacts | null;
   binOwners: IGlobalBinOwner[];
   registryChangeAllowed?: boolean;
   locations?: IGlobalLocation[];
   pnpmInventory?: IPnpmGlobalInventoryFacts;
+  npm?: INpmSelfFacts;
 }
 // Infrastructure inputs only; no controller accepts paths, argv or environment.
 export interface IGlobalRuntime {

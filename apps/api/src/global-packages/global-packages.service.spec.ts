@@ -126,6 +126,7 @@ function setupPnpmService(change = false) {
       package: 'is-number',
       versions: ['7.0.0', '8.0.0'],
       tags: { latest: '8.0.0' },
+      deprecatedVersions: [],
     });
   const targetFacts = {
     ...testFacts(true).target!,
@@ -272,6 +273,7 @@ function setupNpmService(change: boolean, version: string) {
       package: 'test-tool',
       versions: ['1.0.0', '2.0.0'],
       tags: { latest: '2.0.0' },
+      deprecatedVersions: [],
     });
   const target = jest
     .spyOn(GlobalRegistry.prototype, 'getTarget')

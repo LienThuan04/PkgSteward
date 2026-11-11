@@ -109,6 +109,18 @@ describe('global activity DTO contracts', () => {
 });
 
 describe('global preview DTO discriminants', () => {
+  it('accepts repair only for npm-self without any target property', () => {
+    const repair = { ...base, package: 'npm', action: 'repair' };
+    expect(errors(GlobalPreviewDto, repair)).toEqual([]);
+    for (const patch of [
+      { manager: 'pnpm' },
+      { package: 'tool' },
+      { targetVersion: undefined },
+      { targetVersion: null },
+      { targetVersion: '12.2.2' },
+    ])
+      expect(errors(GlobalPreviewDto, { ...repair, ...patch })).not.toEqual([]);
+  });
   it('accepts remove without a target', () => {
     expect(errors(GlobalPreviewDto, { ...base, action: 'remove' })).toEqual([]);
   });

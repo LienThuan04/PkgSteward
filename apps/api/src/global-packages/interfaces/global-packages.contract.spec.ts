@@ -96,6 +96,67 @@ const job: IGlobalJob = {
 };
 
 describe('global public contract and entity exclusions', () => {
+  it('serializes npm state, repair targets and partial repair results without internal facts', () => {
+    const npm = {
+      appVersion: '11.17.0',
+      terminalBefore: null,
+      terminalAfter: '11.17.0',
+      prefix: 'D:\\TEST\\prefix',
+      repairTargets: ['D:\\TEST\\prefix\\npm'],
+    };
+    const npmRepair = {
+      deleted: ['D:\\TEST\\prefix\\npm'],
+      failed: { path: 'D:\\TEST\\prefix\\npm.cmd', code: 'ACCESS_DENIED' },
+      remaining: ['D:\\TEST\\prefix\\npm.cmd'],
+    };
+    const input = {
+      ...job,
+      action: 'repair',
+      preview: { ...preview, currentVersion: null, npm },
+      npmRepair,
+      versions: {
+        manager: 'npm',
+        package: 'npm',
+        versions: ['12.2.2'],
+        tags: {},
+        deprecatedVersions: ['11.0.0'],
+      },
+    };
+    expect(
+      instanceToPlain(
+        plainToInstance(GlobalJobEntity, { ...input, facts: {} }),
+      ),
+    ).toEqual(input);
+    const npmVersion = {
+      bundledVersion: '11.17.0',
+      overlayVersion: null,
+      terminalVersion: null,
+      prefix: 'D:\\TEST\\prefix',
+      overlayState: 'broken',
+      delegation: 'unverified',
+      reason: 'BIN_CONFLICT',
+    };
+    const snapshot = {
+      revision: 'TEST',
+      asOf: preview.createdAt,
+      stale: false,
+      managers: [
+        {
+          manager: 'npm',
+          version: '11.17.0',
+          available: false,
+          reason: 'INVENTORY_FAILED',
+          globalRoot: null,
+          binDir: null,
+          packages: [],
+          npmVersion,
+        },
+      ],
+    };
+    expect(
+      instanceToPlain(plainToInstance(GlobalSnapshotEntity, snapshot)),
+    ).toEqual(snapshot);
+  });
   it('enables both managers while retaining disabled, setup and group reasons', () => {
     expect(GLOBAL_DISABLED_MANAGERS).toEqual([]);
     expect(GLOBAL_REASON_CODES).toEqual(
@@ -189,7 +250,7 @@ describe('global public contract and entity exclusions', () => {
   });
   it('limits managers/actions/kinds and reuses the M6 status values', () => {
     expect(GLOBAL_MANAGERS).toEqual(['npm', 'pnpm']);
-    expect(GLOBAL_ACTIONS).toEqual(['remove', 'change']);
+    expect(GLOBAL_ACTIONS).toEqual(['remove', 'change', 'repair']);
     expect(GLOBAL_JOB_KINDS).toEqual([
       'inventory',
       'versions',

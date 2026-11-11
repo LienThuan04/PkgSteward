@@ -4,6 +4,7 @@ import type {
   GlobalMutationLaunch,
   GlobalProbeSpawn,
   IGlobalPreviewFacts,
+  IGlobalPackageFacts,
   IGlobalServiceRuntime,
 } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
@@ -75,7 +76,9 @@ export function testConfigIdentity(path: string, text = '') {
   };
 }
 
-export function testFacts(change = false): IGlobalPreviewFacts {
+export function testFacts(
+  change = false,
+): IGlobalPreviewFacts & { current: IGlobalPackageFacts } {
   const location = testLocation();
   const packageRoot = win32.join(location.globalRoot, 'test-tool');
   location.configIdentities = [
@@ -106,6 +109,8 @@ export function testFacts(change = false): IGlobalPreviewFacts {
           manifestHash: 'TEST-target-hash',
           integrity: `sha512-${Buffer.alloc(64, 1).toString('base64')}`,
           bins: [{ name: 'test-tool', target: 'dist/tool.js' }],
+          engines: null,
+          deprecated: false,
         }
       : null,
     binOwners: [{ name: 'test-tool', owner: 'test-tool' }],
