@@ -316,6 +316,50 @@ describe('registry response validation and bounds', () => {
       'REGISTRY_INVALID_RESPONSE',
     );
   });
+  it('drops dist-tags that cannot be requested (real npm has v6.14-next) and keeps the catalog', async () => {
+    const metadata = jest
+      .spyOn(ProjectRegistry.prototype, 'getPackageMetadata')
+      .mockResolvedValue({
+        versions: ['11.1.0', '6.14.18'],
+        distTags: {
+          latest: '11.1.0',
+          'v6.14-next': '6.14.18',
+          '1.0.0': '11.1.0',
+        },
+        deprecatedVersions: [],
+      });
+    try {
+      const versions = await new GlobalRegistry(mockFetch()).getVersions(
+        request(),
+        new AbortController().signal,
+      );
+      expect(versions.tags).toEqual({ latest: '11.1.0' });
+      expect(versions.versions).toEqual(['11.1.0', '6.14.18']);
+    } finally {
+      metadata.mockRestore();
+    }
+  });
+  it('still refuses a requestable tag that points outside the catalog', async () => {
+    const metadata = jest
+      .spyOn(ProjectRegistry.prototype, 'getPackageMetadata')
+      .mockResolvedValue({
+        versions: ['11.1.0'],
+        distTags: { latest: '11.1.0', next: '11.9.0' },
+        deprecatedVersions: [],
+      });
+    try {
+      await expectGlobalReason(
+        () =>
+          new GlobalRegistry(mockFetch()).getVersions(
+            request(),
+            new AbortController().signal,
+          ),
+        'REGISTRY_INVALID_RESPONSE',
+      );
+    } finally {
+      metadata.mockRestore();
+    }
+  });
   it('projects deprecated versions from package metadata', async () => {
     const fetcher = mockFetch().mockResolvedValue(
       json(

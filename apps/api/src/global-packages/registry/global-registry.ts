@@ -171,24 +171,24 @@ export class GlobalRegistry {
       if (versions.length > 10_000 || Object.keys(distTags).length > 10_000)
         throw fail('LIMIT_EXCEEDED');
       const known = new Set(versions);
+      // Real packuments carry tag names a client cannot request (npm has `v6.14-next`):
+      // drop those instead of rejecting the catalog. Requestable tags must still resolve.
+      const tags = Object.entries(distTags).filter(
+        ([tag]) => isGlobalTargetVersion(tag) && !isGlobalExactVersion(tag),
+      );
       if (
         known.size !== versions.length ||
         versions.some((version) => !isGlobalExactVersion(version)) ||
         new Set(deprecatedVersions).size !== deprecatedVersions.length ||
         deprecatedVersions.some((version) => !known.has(version)) ||
-        Object.entries(distTags).some(
-          ([tag, version]) =>
-            !isGlobalTargetVersion(tag) ||
-            isGlobalExactVersion(tag) ||
-            !known.has(version),
-        )
+        tags.some(([, version]) => !known.has(version))
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
       return {
         manager: input.manager,
         package: input.packageName,
         versions,
-        tags: distTags,
+        tags: Object.fromEntries(tags),
         deprecatedVersions,
       };
     });
