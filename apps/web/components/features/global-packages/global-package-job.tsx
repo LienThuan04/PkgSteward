@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { globalMutationSucceeded } from "@/lib/global-packages/global-session"
 import type { GlobalController } from "@/components/features/global-packages/global-packages-panel"
+import type { GlobalAction } from "@/lib/global-packages/global-types"
 import type messages from "@/messages/vi.json"
 
 export function GlobalActionLabel({ pending, icon: Icon, children }: { pending: boolean; icon?: LucideIcon; children: ReactNode }) {
@@ -21,6 +22,12 @@ export function GlobalCodeMessage({ code, kind = "errors" }: { code: string; kin
     | `warnings.${keyof typeof messages.globalPackages.warnings}`
     | `risk.${keyof typeof messages.globalPackages.risk}`
   return <>{t(t.has(key) ? key : "errors.UNKNOWN")}</>
+}
+
+/** npm itself (package npm on manager npm): "remove" returns terminals to the Node-bundled npm (M9G). */
+export function GlobalActionName({ action, npmSelf }: { action: GlobalAction; npmSelf: boolean }) {
+  const t = useTranslations("globalPackages")
+  return <>{t(action === "repair" ? "npmVersion.repair" : action === "change" ? "change" : npmSelf ? "npmVersion.restore" : "remove")}</>
 }
 
 export function GlobalPackageJob({ controller, headingRef }: { controller: GlobalController; headingRef: RefObject<HTMLHeadingElement | null> }) {
@@ -52,7 +59,7 @@ export function GlobalPackageJob({ controller, headingRef }: { controller: Globa
       {result ? <div className="space-y-2 rounded-md border border-border bg-muted p-4 text-body-sm">
         <p className="font-semibold">{t(succeeded ? "outcome.success" : "outcome.failure", { name: result.package ?? t("package") })}</p>
         {result.failureCode ? <p><GlobalCodeMessage code={result.failureCode} /></p> : null}
-        {!succeeded ? <p>{t(result.mutationSpawned ? "job.mayHaveChanged" : "outcome.unchanged")}</p> : <p>{t("outcome.refreshHint")}</p>}
+        {!succeeded ? <p>{t(result.mutationSpawned || result.mayHaveChanged ? "job.mayHaveChanged" : "outcome.unchanged")}</p> : <p>{t("outcome.refreshHint")}</p>}
       </div> : null}
     </div>
     <div className="flex flex-wrap items-center gap-3">
@@ -88,7 +95,15 @@ export function GlobalPackageJob({ controller, headingRef }: { controller: Globa
     {job ? <div className="min-w-0 space-y-3 text-body-sm [overflow-wrap:anywhere]">
       {job.manager ? <p className="font-mono">{job.manager}{job.managerVersion ? ` ${job.managerVersion}` : ""}</p> : null}
       {job.package ? <p>{job.package}</p> : null}
-      {job.action ? <p>{t(job.action === "remove" ? "remove" : "change")}: <span className="font-mono">{job.currentVersion ?? t("unknown")} → {job.action === "remove" ? t("removed") : job.targetVersion ?? t("unknown")}</span></p> : null}
+      {job.action ? <p><GlobalActionName action={job.action} npmSelf={job.manager === "npm" && job.package === "npm"} />: <span className="font-mono">{job.currentVersion ?? t("unknown")} → {job.action === "change" ? job.targetVersion ?? t("unknown") : t("removed")}</span></p> : null}
+      {job.npmRepair ? <dl className="grid min-w-0 gap-3">
+        <div className="min-w-0"><dt className="text-muted-foreground">{t("job.repairDeleted")}</dt>
+          <dd className="break-all font-mono">{job.npmRepair.deleted.length ? <ul>{job.npmRepair.deleted.map(path => <li key={path}>{path}</li>)}</ul> : t("none")}</dd></div>
+        {job.npmRepair.failed ? <div className="min-w-0"><dt className="text-muted-foreground">{t("job.repairFailed")}</dt>
+          <dd className="break-all"><span className="font-mono">{job.npmRepair.failed.path}</span> · <GlobalCodeMessage code={job.npmRepair.failed.code} /></dd></div> : null}
+        {job.npmRepair.remaining.length ? <div className="min-w-0"><dt className="text-muted-foreground">{t("job.repairRemaining")}</dt>
+          <dd className="break-all font-mono"><ul>{job.npmRepair.remaining.map(path => <li key={path}>{path}</li>)}</ul></dd></div> : null}
+      </dl> : null}
       <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
         <div><dt className="text-muted-foreground">{t("job.exitCode")}</dt><dd>{job.exitCode === null ? t("unknown") : format.number(job.exitCode)}</dd></div>
         <div><dt className="text-muted-foreground">{t("job.signal")}</dt><dd className="break-all font-mono">{job.signal ?? t("none")}</dd></div>

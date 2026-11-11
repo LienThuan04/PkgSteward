@@ -7,6 +7,7 @@ import { useFormatter, useTranslations } from "next-intl"
 import { GlobalPackagesList } from "@/components/features/global-packages/global-packages-list"
 import { GlobalPackagePreview } from "@/components/features/global-packages/global-package-preview"
 import { GlobalActionLabel, GlobalCodeMessage, GlobalPackageJob } from "@/components/features/global-packages/global-package-job"
+import { NpmVersionCard } from "@/components/features/global-packages/npm-version-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -106,7 +107,8 @@ export function GlobalPackagesPanel({ snapshot, latest }: { snapshot: GlobalSnap
         <TabsList aria-label={t("manager")}>
           {managers.map(item => <TabsTrigger key={item.manager} value={item.manager} disabled={blocked}>{item.manager}</TabsTrigger>)}
         </TabsList>
-        {managers.map(item => <TabsContent key={item.manager} value={item.manager} className="min-w-0 pt-4">
+        {managers.map(item => <TabsContent key={item.manager} value={item.manager} className="min-w-0 space-y-4 pt-4">
+          {item.manager === "npm" ? <NpmVersionCard inventory={item} controller={controller} blocked={blocked} onPreview={preview} /> : null}
           <div className="min-w-0 rounded-md border border-border bg-background">
             <dl className="min-w-0 divide-y divide-border border-b border-border text-body-sm">
               <div className="grid min-w-0 gap-1 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-4"><dt className="text-muted-foreground">{t("managerVersion")}</dt><dd className="min-w-0 font-mono [overflow-wrap:anywhere]">{item.version ?? t("unknown")}</dd></div>

@@ -931,7 +931,36 @@
       "expiresAt": "Preview expires at {time}",
       "sending": "Submitting…",
       "confirmRemove": "Remove global package",
-      "confirmChange": "Change global version"
+      "confirmChange": "Change global version",
+      "confirmRestore": "Return to Node-bundled npm",
+      "confirmRepair": "Repair npm",
+      "npmTerminal": "Terminal npm",
+      "npmApp": "PkgSteward npm",
+      "npmAppValue": "{version}, unchanged",
+      "repairWarning": "The items below are deleted permanently, not moved to the Recycle Bin, and cannot be undone. Close every terminal running npm before repairing. After the repair, terminals use the Node-bundled npm again.",
+      "repairTargets": "Items to delete"
+    },
+    "npmVersion": {
+      "title": "npm version",
+      "intro": "Change the npm version your terminals use. PkgSteward keeps running the Node-bundled npm {version}. This applies to the whole machine, unlike pinning npm for one project on the project page.",
+      "terminal": "Terminal npm",
+      "app": "PkgSteward npm",
+      "appValue": "{version} (bundled with Node, unchanged)",
+      "prefix": "Global folder",
+      "statusLabel": "Status",
+      "state": {
+        "absent": "Using the Node-bundled npm",
+        "present": "Using npm installed in the global folder",
+        "broken": "The npm in the global folder is broken",
+        "linked": "The npm in the global folder is a link and cannot be managed",
+        "unsupported": "This Node installation layout is not supported"
+      },
+      "brokenHelp": "A previous npm install or removal did not finish (for example, it was stopped or the power went out). Repair npm deletes the leftover npm files in the global folder so terminals return to the Node-bundled npm. The preview lists every item it deletes.",
+      "restore": "Return to Node-bundled npm",
+      "repair": "Repair npm",
+      "optionsHint": "Only stable npm 11 and 12 versions are listed. A version that does not support the running Node version is refused at preview.",
+      "noOptions": "No npm 11 or 12 version is available to choose.",
+      "listHint": "Change or remove it in the npm version card above."
     },
     "risk": { "MACHINE_WIDE": "This operation affects the whole machine, not a single project." },
     "status": {
@@ -956,7 +985,8 @@
       "refreshRequired": "The final inventory could not be verified. Refresh inventory after process cleanup; success is unconfirmed.",
       "exitCode": "Actual exit code", "signal": "Termination signal", "stopReason": "Stop reason",
       "stopReasons": { "cancel": "User requested stop", "timeout": "Timeout", "shutdown": "Backend shutdown" },
-      "startedAt": "Started at {time}", "finishedAt": "Finished at {time}"
+      "startedAt": "Started at {time}", "finishedAt": "Finished at {time}",
+      "repairDeleted": "Deleted", "repairFailed": "Stopped at", "repairRemaining": "Not deleted"
     },
     "errors": {
       "UNKNOWN": "An unknown error occurred. Check status and logs before another action.",
@@ -1004,6 +1034,16 @@
       "MANAGER_DISABLED": "This version cannot manage global packages of this package manager yet. Manage them in a terminal for now.",
       "PNPM_GLOBAL_NOT_CONFIGURED": "pnpm global packages are not set up. Run pnpm setup in a terminal, open a new terminal, then restart PkgSteward.",
       "GLOBAL_GROUP_UNSUPPORTED": "This package was installed with others in one pnpm add -g command. PkgSteward only displays it; manage it in a terminal.",
+      "NPM_PREFIX_IS_NODE_DIR": "The npm global folder is inside the Node installation folder (for example, with nvm). PkgSteward does not replace Node's own npm.",
+      "NPM_OVERLAY_ABSENT": "No npm is installed in the global folder; terminals already use the Node-bundled npm.",
+      "NPM_OVERLAY_NOT_BROKEN": "The npm in the global folder is not broken, so no repair is needed. Refresh the inventory to see the current state.",
+      "NPM_DELEGATION_UNVERIFIED": "PkgSteward cannot prove terminals would run the new npm: Node's npm launchers have an unknown form. You can still return to or repair npm.",
+      "TARGET_VERSION_UNSUPPORTED": "Only stable npm 11 or 12 versions that are not deprecated are supported.",
+      "ENGINE_UNSUPPORTED": "This npm version does not support the running Node version. Choose another version.",
+      "FILE_IN_USE": "A file is in use by another program, for example a terminal running npm. Close that program and try again.",
+      "ACCESS_DENIED": "Permission to delete an item was denied. Check the folder permissions or antivirus software, then try again.",
+      "DELETE_FAILED": "An item could not be deleted. Refresh the inventory and preview again.",
+      "PATH_TOO_LONG": "The path is too long to delete.",
       "NO_PREVIEW": "Request and review a preview first.",
       "RISK_NOT_ACKNOWLEDGED": "Acknowledge the machine-wide risks before confirming.",
       "CONFIRM_TEXT_MISMATCH": "The confirmation text must match exactly.",
@@ -1030,7 +1070,8 @@
       "PRERELEASE_VERSION": "The target is a prerelease version.",
       "GLOBAL_CODE_EXECUTION": "Package lifecycle scripts can execute across the machine with your user privileges.",
       "GLOBAL_CONSUMERS_UNKNOWN": "Other programs and terminals using this package cannot all be detected.",
-      "PROCESS_ESCAPE_RESIDUAL": "Package code may launch processes outside the tracked tree. After a crash, check Task Manager; process isolation is not guaranteed."
+      "PROCESS_ESCAPE_RESIDUAL": "Package code may launch processes outside the tracked tree. After a crash, check Task Manager; process isolation is not guaranteed.",
+      "TERMINAL_NPM_SWITCH": "Every terminal that uses this Node's npm runs the new version from its next run; a terminal already running npm keeps the old version until it runs again. A project whose .npmrc changes the prefix may see a different version. PkgSteward keeps using the Node-bundled npm."
     }
   },
   "packageManagers": {

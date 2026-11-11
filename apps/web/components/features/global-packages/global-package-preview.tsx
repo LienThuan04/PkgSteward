@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useId, useState } from "react"
-import { AlertTriangleIcon, EyeIcon, PencilIcon, Trash2Icon, XIcon } from "lucide-react"
+import { AlertTriangleIcon, EyeIcon, PencilIcon, RotateCcwIcon, Trash2Icon, WrenchIcon, XIcon } from "lucide-react"
 import { useFormatter, useTranslations } from "next-intl"
 import { RiskBadge } from "@/components/features/file-ops/risk-badge"
-import { GlobalActionLabel, GlobalCodeMessage } from "@/components/features/global-packages/global-package-job"
+import { GlobalActionLabel, GlobalActionName, GlobalCodeMessage } from "@/components/features/global-packages/global-package-job"
 import { globalActionPending } from "@/lib/global-packages/global-session"
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -41,6 +41,8 @@ export function GlobalPackagePreview({ controller, blocked, onCloseAutoFocus, on
   const pending = state.phase === "starting"
   const executing = globalActionPending(state, "mutation")
   const previewing = globalActionPending(state, "preview")
+  const npm = preview.npm
+  const repair = preview.action === "repair"
 
   return <AlertDialog open onOpenChange={open => { if (!open && !pending) onCancel() }}>
     <AlertDialogContent className="max-h-[calc(100dvh-2rem)] min-w-0 overflow-y-auto data-[size=default]:sm:max-w-2xl"
@@ -56,18 +58,25 @@ export function GlobalPackagePreview({ controller, blocked, onCloseAutoFocus, on
           <div className="min-w-0"><dt className="text-muted-foreground">{t("package")}</dt><dd className="break-all">{preview.package}</dd></div>
           <div className="min-w-0"><dt className="text-muted-foreground">{t("globalRoot")}</dt><dd className="break-all font-mono">{preview.globalRoot}</dd></div>
           <div className="min-w-0"><dt className="text-muted-foreground">{t("binDir")}</dt><dd className="break-all font-mono">{preview.binDir}</dd></div>
-          <div className="min-w-0"><dt className="text-muted-foreground">{t("dialog.change")}</dt><dd className="break-all font-mono">{preview.currentVersion} → {preview.action === "remove" ? t("removed") : preview.targetVersion ?? t("unknown")}</dd></div>
+          {npm ? <>
+            <div className="min-w-0"><dt className="text-muted-foreground">{t("dialog.npmTerminal")}</dt><dd className="break-all font-mono">{npm.terminalBefore ?? t("unknown")} → {npm.terminalAfter}</dd></div>
+            <div className="min-w-0"><dt className="text-muted-foreground">{t("dialog.npmApp")}</dt><dd className="break-all">{t("dialog.npmAppValue", { version: npm.appVersion })}</dd></div>
+          </> : <div className="min-w-0"><dt className="text-muted-foreground">{t("dialog.change")}</dt><dd className="break-all font-mono">{preview.currentVersion ?? t("unknown")} → {preview.action === "change" ? preview.targetVersion ?? t("unknown") : t("removed")}</dd></div>}
         </dl>
-        <p className="font-semibold">{t(preview.action === "remove" ? "remove" : "change")}</p>
-        <div className="space-y-3 rounded-md bg-muted p-4">
+        <p className="font-semibold"><GlobalActionName action={preview.action} npmSelf={npm !== undefined} /></p>
+        {repair ? <div className="space-y-3 rounded-md bg-muted p-4">
+          <p><AlertTriangleIcon aria-hidden="true" className="mr-1 inline size-4" />{t("dialog.repairWarning")}</p>
+          <h3 className="font-semibold">{t("dialog.repairTargets")}</h3>
+          {npm?.repairTargets.length ? <ul className="break-all font-mono">{npm.repairTargets.map(path => <li key={path}>{path}</li>)}</ul> : <p>{t("none")}</p>}
+        </div> : <div className="space-y-3 rounded-md bg-muted p-4">
           <h3 className="font-semibold">{t("dialog.warnings")}</h3>
           <ul className="space-y-2">{permanentWarnings.map(code => <li key={code}>
             <AlertTriangleIcon aria-hidden="true" className="mr-1 inline size-4" />{t(`dialog.${code}`)}
           </li>)}</ul>
-        </div>
+        </div>}
         {preview.risk.reasons.length ? <ul className="space-y-2">{preview.risk.reasons.map(({ code }) => <li key={code}><GlobalCodeMessage kind="risk" code={code} /></li>)}</ul> : null}
         {preview.warningCodes.length ? <ul className="space-y-2">{preview.warningCodes.map(code => <li key={code}><GlobalCodeMessage kind="warnings" code={code} /></li>)}</ul> : null}
-        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+        {repair ? null : <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           <div className="min-w-0"><h3 className="font-semibold">{t("dialog.binsAdded")}</h3>
             {preview.bins.added.length ? <ul className="break-all font-mono">{preview.bins.added.map(bin => <li key={bin.name}>{bin.name} → {bin.target}</li>)}</ul> : <p>{t("none")}</p>}
           </div>
@@ -77,7 +86,7 @@ export function GlobalPackagePreview({ controller, blocked, onCloseAutoFocus, on
           <div className="min-w-0 sm:col-span-2"><h3 className="font-semibold">{t("dialog.binsReplaced")}</h3>
             {preview.bins.replaced.length ? <ul className="break-all font-mono">{preview.bins.replaced.map(bin => <li key={bin.before.name}>{bin.before.name}: {bin.before.target} → {bin.after.target}</li>)}</ul> : <p>{t("none")}</p>}
           </div>
-        </div>
+        </div>}
         <p>{t("dialog.expiresAt", { time: format.dateTime(new Date(preview.expiresAt), { timeStyle: "medium" }) })}</p>
         {expired ? <div role="alert" className="space-y-3 rounded-md border border-border p-4">
           <p>{t("errors.PREVIEW_EXPIRED")}</p>
@@ -102,7 +111,9 @@ export function GlobalPackagePreview({ controller, blocked, onCloseAutoFocus, on
       <AlertDialogFooter>
         <AlertDialogCancel disabled={pending} className="h-auto min-h-10 border-border whitespace-normal"><XIcon aria-hidden="true" />{t("cancel")}</AlertDialogCancel>
         <Button type="button" variant="destructive" disabled={blocked || error !== null}
-          aria-busy={executing} className="h-auto min-h-10 whitespace-normal" onClick={() => { void execute() }}><GlobalActionLabel pending={executing} icon={preview.action === "remove" ? Trash2Icon : PencilIcon}>{t(executing ? "loadingExecute" : preview.action === "remove" ? "dialog.confirmRemove" : "dialog.confirmChange")}</GlobalActionLabel></Button>
+          aria-busy={executing} className="h-auto min-h-10 whitespace-normal" onClick={() => { void execute() }}><GlobalActionLabel pending={executing}
+            icon={repair ? WrenchIcon : preview.action === "remove" ? npm ? RotateCcwIcon : Trash2Icon : PencilIcon}>{t(executing ? "loadingExecute"
+              : repair ? "dialog.confirmRepair" : preview.action === "remove" ? npm ? "dialog.confirmRestore" : "dialog.confirmRemove" : "dialog.confirmChange")}</GlobalActionLabel></Button>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
