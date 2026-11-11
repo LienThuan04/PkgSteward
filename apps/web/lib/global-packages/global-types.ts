@@ -2,7 +2,7 @@ import { ApiError } from "../api/response.ts"
 import type { Risk, RunFailureCode, RunLogPage, RunStatus, RunWarningCode } from "@/lib/api/types"
 
 export type GlobalManager = "npm" | "pnpm"
-export type GlobalAction = "remove" | "change"
+export type GlobalAction = "remove" | "change" | "repair"
 export type GlobalJobKind = "inventory" | "versions" | "preview" | "mutation"
 export type GlobalReasonCode = RunFailureCode
   | "LOCATION_AMBIGUOUS" | "REGISTRY_CONFIG_UNSUPPORTED" | "LINKED_PACKAGE" | "PROTECTED_PACKAGE"
@@ -10,8 +10,11 @@ export type GlobalReasonCode = RunFailureCode
   | "REQUEST_MISMATCH" | "LIMIT_EXCEEDED" | "REGISTRY_UNAVAILABLE" | "REGISTRY_INVALID_RESPONSE"
   | "REGISTRY_NOT_FOUND" | "REGISTRY_RATE_LIMITED" | "REGISTRY_AUTH_REQUIRED" | "INVENTORY_FAILED" | "POSTCONDITION_FAILED"
   | "MANAGER_DISABLED" | "PNPM_GLOBAL_NOT_CONFIGURED" | "GLOBAL_GROUP_UNSUPPORTED"
+  | "NPM_PREFIX_IS_NODE_DIR" | "NPM_OVERLAY_ABSENT" | "NPM_OVERLAY_NOT_BROKEN" | "NPM_DELEGATION_UNVERIFIED"
+  | "TARGET_VERSION_UNSUPPORTED" | "ENGINE_UNSUPPORTED" | "FILE_IN_USE" | "ACCESS_DENIED" | "DELETE_FAILED" | "PATH_TOO_LONG"
 export type GlobalWarningCode = RunWarningCode | "MAJOR_VERSION_CHANGE" | "VERSION_DOWNGRADE"
   | "PRERELEASE_VERSION" | "GLOBAL_CODE_EXECUTION" | "GLOBAL_CONSUMERS_UNKNOWN" | "PROCESS_ESCAPE_RESIDUAL"
+  | "TERMINAL_NPM_SWITCH"
 
 export interface GlobalActivityRequest { requestId: string }
 export interface GlobalVersionsRequest extends GlobalActivityRequest { manager: GlobalManager; package: string }
@@ -37,6 +40,17 @@ export interface GlobalPackage {
   status: "manageable" | "protected" | "linked" | "invalid"
   reason: GlobalReasonCode | null
 }
+/** npm only: which npm terminals run (prefix overlay) vs the Node-bundled npm PkgSteward keeps (M9G). */
+export type NpmOverlayState = "absent" | "present" | "broken" | "linked" | "unsupported"
+export interface GlobalNpmVersion {
+  bundledVersion: string
+  overlayVersion: string | null
+  terminalVersion: string | null
+  prefix: string
+  overlayState: NpmOverlayState
+  delegation: "verified" | "unverified"
+  reason: GlobalReasonCode | null
+}
 export interface GlobalManagerInventory {
   manager: GlobalManager
   version: string | null
@@ -45,9 +59,23 @@ export interface GlobalManagerInventory {
   globalRoot: string | null
   binDir: string | null
   packages: GlobalPackage[]
+  npmVersion?: GlobalNpmVersion
 }
 export interface GlobalSnapshot { revision: string; asOf: string; stale: boolean; managers: GlobalManagerInventory[] }
-export interface GlobalVersions { manager: GlobalManager; package: string; versions: string[]; tags: Record<string, string> }
+export interface GlobalVersions {
+  manager: GlobalManager
+  package: string
+  versions: string[]
+  tags: Record<string, string>
+  deprecatedVersions?: string[]
+}
+export interface GlobalNpmPreview {
+  appVersion: string
+  terminalBefore: string | null
+  terminalAfter: string
+  prefix: string
+  repairTargets: string[]
+}
 export interface GlobalPreview {
   previewId: string
   createdAt: string
@@ -56,7 +84,7 @@ export interface GlobalPreview {
   managerVersion: string
   action: GlobalAction
   package: string
-  currentVersion: string
+  currentVersion: string | null
   requestedVersion: string | null
   targetVersion: string | null
   globalRoot: string
@@ -65,6 +93,12 @@ export interface GlobalPreview {
   warningCodes: GlobalWarningCode[]
   risk: Risk
   confirmText: string
+  npm?: GlobalNpmPreview
+}
+export interface GlobalNpmRepairProgress {
+  deleted: string[]
+  failed: { path: string; code: GlobalReasonCode } | null
+  remaining: string[]
 }
 export interface GlobalJobStart extends GlobalActivityRequest { jobId: string; previewId: string | null; status: RunStatus }
 export interface GlobalJob extends GlobalJobStart {
@@ -94,6 +128,7 @@ export interface GlobalJob extends GlobalJobStart {
   droppedBytes: number
   preview: GlobalPreview | null
   versions: GlobalVersions | null
+  npmRepair?: GlobalNpmRepairProgress | null
 }
 export type GlobalLogPage = RunLogPage
 export interface GlobalError { code: string; statusCode?: number }
@@ -107,7 +142,9 @@ const reasonCodes = new Set<GlobalReasonCode>([
   "BIN_CONFLICT", "NO_VERSION_CHANGE", "PREVIEW_CHANGED", "PREVIEW_EXPIRED", "PREVIEW_CONSUMED", "REQUEST_MISMATCH",
   "LIMIT_EXCEEDED", "REGISTRY_UNAVAILABLE", "REGISTRY_INVALID_RESPONSE", "REGISTRY_NOT_FOUND", "REGISTRY_RATE_LIMITED",
   "REGISTRY_AUTH_REQUIRED", "INVENTORY_FAILED", "POSTCONDITION_FAILED", "MANAGER_DISABLED",
-  "PNPM_GLOBAL_NOT_CONFIGURED", "GLOBAL_GROUP_UNSUPPORTED",
+  "PNPM_GLOBAL_NOT_CONFIGURED", "GLOBAL_GROUP_UNSUPPORTED", "NPM_PREFIX_IS_NODE_DIR", "NPM_OVERLAY_ABSENT",
+  "NPM_OVERLAY_NOT_BROKEN", "NPM_DELEGATION_UNVERIFIED", "TARGET_VERSION_UNSUPPORTED", "ENGINE_UNSUPPORTED",
+  "FILE_IN_USE", "ACCESS_DENIED", "DELETE_FAILED", "PATH_TOO_LONG",
 ])
 const errorCodes = new Set<string>([...reasonCodes, "VALIDATION_ERROR", "FORBIDDEN", "NOT_FOUND", "CONFLICT",
   "SERVICE_UNAVAILABLE", "RATE_LIMITED", "HTTP_EXCEPTION", "BACKEND_UNAVAILABLE", "INVALID_RESPONSE"])

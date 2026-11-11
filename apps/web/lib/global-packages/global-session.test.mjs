@@ -126,6 +126,20 @@ test("success requires finalized verified execution, never a completed command s
   }
 })
 
+test("npm repair succeeds without a child process only when every target was deleted and verified", () => {
+  // Repair deletes files in-process (M9G A15): no spawn, no exit code.
+  const repaired = terminal({ kind: "mutation", action: "repair", manager: "npm", package: "npm", mutationSpawned: false,
+    mayHaveChanged: true, exitCode: null, npmRepair: { deleted: ["D:\\TEST\\npm\\npm.cmd"], failed: null, remaining: [] } })
+  assert.equal(globalMutationSucceeded(repaired), true)
+  for (const patch of [{ mayHaveChanged: false }, { failureCode: "FILE_IN_USE" }, { gateHeld: true }, { refreshRequired: true },
+    { npmRepair: { deleted: [], failed: { path: "D:\\TEST\\npm\\npm.cmd", code: "FILE_IN_USE" }, remaining: ["D:\\TEST\\npm\\npm.cmd"] } },
+    { npmRepair: { deleted: [], failed: null, remaining: ["D:\\TEST\\npm\\npm.cmd"] } }, { npmRepair: null }]) {
+    assert.equal(globalMutationSucceeded({ ...repaired, ...patch }), false)
+  }
+  // A change or remove still needs the verified npm process exit.
+  assert.equal(globalMutationSucceeded({ ...repaired, action: "change" }), false)
+})
+
 test("successful execute waits for finalization and log drain, refreshes inventory once, retains its outcome", async t => {
   const h = harness(t)
   await h.mutate()
