@@ -2,7 +2,7 @@ import { Module, RequestMethod } from '@nestjs/common';
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { win32 } from 'node:path';
 import type { NextFunction, Request, Response } from 'express';
@@ -35,10 +35,7 @@ import {
 } from '@/global-packages/interfaces/global-packages.runtime';
 import type { IGlobalDirectoryAccess } from '@/global-packages/discovery/global-location';
 import { createGlobalProbeSpawn } from '@/global-packages/discovery/global-location';
-import type {
-  IRunnerFs,
-  IRunnerTool,
-} from '@/npm-runner/interfaces/npm-runner.types';
+import type { IRunnerTool } from '@/npm-runner/interfaces/npm-runner.types';
 import { createRunnerFs } from '@/npm-runner/toolchain/runner-input';
 import { resolveRunnerTool } from '@/npm-runner/toolchain/runner-tool';
 import { launchRun } from '@/npm-runner/execution/runner-process';
@@ -47,7 +44,7 @@ import { GlobalPackagesController } from '@/global-packages/global-packages.cont
 import { GlobalPackagesService } from '@/global-packages/global-packages.service';
 
 export interface IGlobalRuntimeBindings {
-  fs: IRunnerFs;
+  fs: IGlobalServiceRuntime['fs'];
   processes: IWindowsRunnerProcess | null;
   scanner: {
     getLatest(): { projects: readonly { path: string }[] } | null;
@@ -60,6 +57,7 @@ export interface IGlobalRuntimeBindings {
     platform: NodeJS.Platform;
     execPath: string;
     env: Readonly<NodeJS.ProcessEnv>;
+    nodeVersion?: string;
   };
   fetcher?: typeof fetch;
   launchProcess?: typeof launchRun;
@@ -73,6 +71,7 @@ export function createGlobalPackagesRuntime(
     platform: process.platform,
     execPath: process.execPath,
     env: process.env,
+    nodeVersion: process.versions.node,
   };
   const environment = Object.freeze({ ...host.env });
   const processes = host.platform === 'win32' ? bindings.processes : null;
@@ -191,6 +190,7 @@ export function createGlobalPackagesRuntime(
   };
   return {
     fs,
+    nodeVersion: host.nodeVersion ?? process.versions.node,
     platform: host.platform,
     execPath: host.execPath,
     environment,
@@ -249,9 +249,10 @@ export function createGlobalPackagesRuntime(
     GlobalPackagesService,
     {
       provide: GLOBAL_PACKAGES_FS,
-      useFactory: (): IRunnerFs & IGlobalDirectoryAccess => ({
+      useFactory: (): IGlobalServiceRuntime['fs'] & IGlobalDirectoryAccess => ({
         ...createRunnerFs(),
         readdir: (path) => readdir(path),
+        rm: (path, options) => rm(path, options),
       }),
     },
     {
@@ -280,7 +281,7 @@ export function createGlobalPackagesRuntime(
         ConfigService,
       ],
       useFactory: (
-        fs: IRunnerFs,
+        fs: IGlobalServiceRuntime['fs'],
         processes: IWindowsRunnerProcess | null,
         scanner: ScannerService,
         appPaths: AppPathsService,

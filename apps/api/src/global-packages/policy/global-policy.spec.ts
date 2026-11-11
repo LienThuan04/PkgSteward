@@ -46,6 +46,20 @@ const expectReason = (run: () => unknown, reason: string) => {
 };
 
 describe('M6 registry grammar reuse', () => {
+  it('uses the shared grammar for npm-self repair only', () => {
+    expect(globalConfirmText('npm', 'repair', 'npm', null)).toBe(
+      'REPAIR GLOBAL npm npm',
+    );
+    for (const [manager, name, version] of [
+      ['pnpm', 'npm', null],
+      ['npm', 'tool', null],
+      ['npm', 'npm', '12.2.2'],
+    ] as const)
+      expectReason(
+        () => globalConfirmText(manager, 'repair', name, version),
+        'INVALID_PACKAGE_SPEC',
+      );
+  });
   it.each(['tool', '@test/tool', 'a-b.c_d'])(
     'shares the runner registry name grammar for %s',
     (name) => {

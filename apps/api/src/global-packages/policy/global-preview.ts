@@ -2,6 +2,9 @@ import type {
   IGlobalPreviewFacts,
   IGlobalLocation,
   IGlobalRuntime,
+  IGlobalPackageFacts,
+  INpmPathFacts,
+  INpmSelfFacts,
 } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
   IGlobalExecuteRequest,
@@ -21,7 +24,14 @@ import {
   assessGlobalVersionChange,
   getGlobalRisk,
   globalConfirmText,
+  assertGlobalRepairAction,
 } from '@/global-packages/policy/global-policy';
+import {
+  assertNpmOverlayMutable,
+  assertNpmTarget,
+  npmSelfWarnings,
+  npmTerminalVersion,
+} from './npm-overlay';
 import { validateConfirmation } from '@/core/risk/confirmation';
 import type { IGlobalConfigIdentity } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
@@ -122,6 +132,53 @@ function snapshotGroup(group: IPnpmGlobalGroupFacts): IPnpmGlobalGroupFacts {
   };
 }
 
+function snapshotPackage(current: IGlobalPackageFacts): IGlobalPackageFacts {
+  return {
+    ...current,
+    manifest: snapshotConfigIdentity(current.manifest),
+    binIdentities: current.binIdentities.map(snapshotIdentity),
+    ...(current.pnpmGroup
+      ? { pnpmGroup: snapshotGroup(current.pnpmGroup) }
+      : {}),
+  };
+}
+const snapshotNpmPath = (entry: INpmPathFacts): INpmPathFacts => ({
+  ...entry,
+  identity: snapshotIdentity(entry.identity),
+});
+function snapshotNpm(npm: INpmSelfFacts): INpmSelfFacts {
+  return {
+    ...npm,
+    prefixDirectory: snapshotNpmPath(npm.prefixDirectory),
+    rootDirectory: snapshotNpmPath(npm.rootDirectory),
+    bundledIdentities: npm.bundledIdentities.map(snapshotConfigIdentity),
+    prefixScript: npm.prefixScript
+      ? snapshotConfigIdentity(npm.prefixScript)
+      : null,
+    nodeDirShims: npm.nodeDirShims.map((shim) => ({
+      ...shim,
+      entry: shim.entry ? snapshotNpmPath(shim.entry) : null,
+    })),
+    shims: npm.shims.map((shim) => ({
+      ...shim,
+      entry: shim.entry ? snapshotNpmPath(shim.entry) : null,
+    })),
+    overlay: npm.overlay
+      ? {
+          directory: snapshotNpmPath(npm.overlay.directory),
+          package: npm.overlay.package
+            ? snapshotPackage(npm.overlay.package)
+            : null,
+        }
+      : null,
+    retired: npm.retired.map(snapshotNpmPath),
+    repairTargets: npm.repairTargets.map(snapshotNpmPath),
+  };
+}
+
+export function snapshotGlobalPreviewFacts<T extends IGlobalPreviewFacts>(
+  facts: T,
+): T;
 export function snapshotGlobalPreviewFacts(
   facts: IGlobalPreviewFacts,
 ): IGlobalPreviewFacts {
@@ -129,17 +186,8 @@ export function snapshotGlobalPreviewFacts(
     ...facts,
     location: snapshotLocation(facts.location),
     locations: facts.locations?.map(snapshotLocation),
-    current: {
-      ...facts.current,
-      manifest: {
-        ...facts.current.manifest,
-        file: snapshotIdentity(facts.current.manifest.file),
-      },
-      binIdentities: facts.current.binIdentities.map(snapshotIdentity),
-      ...(facts.current.pnpmGroup
-        ? { pnpmGroup: snapshotGroup(facts.current.pnpmGroup) }
-        : {}),
-    },
+    current: facts.current ? snapshotPackage(facts.current) : null,
+    ...(facts.npm ? { npm: snapshotNpm(facts.npm) } : {}),
     ...(facts.pnpmInventory
       ? {
           pnpmInventory: {
@@ -247,6 +295,81 @@ function locationFacts(location: IGlobalLocation) {
   };
 }
 
+function packageFacts(current: IGlobalPackageFacts) {
+  return {
+    ...current,
+    packageRoot: pathKey(current.packageRoot),
+    manifest: configIdentityFacts(current.manifest),
+    bins: sortBins(current.bins),
+    binIdentities: identities(current.binIdentities),
+    pnpmGroup: current.pnpmGroup ? groupFacts(current.pnpmGroup) : undefined,
+  };
+}
+function npmPathFacts(entry: INpmPathFacts) {
+  const stat = entry.identity.stat;
+  return {
+    ...entry,
+    path: pathKey(entry.path),
+    realPath: pathKey(entry.realPath),
+    identity:
+      entry.type === 'directory'
+        ? {
+            path: pathKey(entry.identity.path),
+            dev: stat.dev,
+            ino: stat.ino,
+            type: entry.type,
+          }
+        : {
+            path: pathKey(entry.identity.path),
+            dev: stat.dev,
+            ino: stat.ino,
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            ctimeMs: stat.ctimeMs,
+          },
+  };
+}
+function comparableNpm(npm: INpmSelfFacts) {
+  const paths = (entries: INpmPathFacts[]) =>
+    entries.map(npmPathFacts).sort((a, b) => a.path.localeCompare(b.path));
+  const shims = (entries: INpmSelfFacts['shims']) =>
+    entries
+      .map((shim) => ({
+        ...shim,
+        entry: shim.entry ? npmPathFacts(shim.entry) : null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    ...npm,
+    nodeDir: pathKey(npm.nodeDir),
+    packageDir: pathKey(npm.packageDir),
+    // Exact prefix spelling also pins the strings npm hashes for retired paths.
+    prefixResolved: npm.prefixResolved,
+    prefixReal: npm.prefixReal,
+    protectedPaths: pathSet(npm.protectedPaths),
+    prefixDirectory: npmPathFacts(npm.prefixDirectory),
+    rootDirectory: npmPathFacts(npm.rootDirectory),
+    bundledIdentities: npm.bundledIdentities
+      .map(configIdentityFacts)
+      .sort((a, b) => a.file.path.localeCompare(b.file.path)),
+    prefixScript: npm.prefixScript
+      ? configIdentityFacts(npm.prefixScript)
+      : null,
+    nodeDirShims: shims(npm.nodeDirShims),
+    shims: shims(npm.shims),
+    overlay: npm.overlay
+      ? {
+          directory: npmPathFacts(npm.overlay.directory),
+          package: npm.overlay.package
+            ? packageFacts(npm.overlay.package)
+            : null,
+        }
+      : null,
+    retired: paths(npm.retired),
+    repairTargets: paths(npm.repairTargets),
+  };
+}
+
 function comparable(facts: IGlobalPreviewFacts) {
   const { location, current, target } = facts;
   return {
@@ -254,17 +377,8 @@ function comparable(facts: IGlobalPreviewFacts) {
     locations: facts.locations
       ?.map(locationFacts)
       .sort((a, b) => a.manager.localeCompare(b.manager)),
-    current: {
-      ...current,
-      packageRoot: pathKey(current.packageRoot),
-      manifest: {
-        sha256: current.manifest.sha256,
-        file: identityFacts(current.manifest.file),
-      },
-      bins: sortBins(current.bins),
-      binIdentities: identities(current.binIdentities),
-      pnpmGroup: current.pnpmGroup ? groupFacts(current.pnpmGroup) : undefined,
-    },
+    current: current ? packageFacts(current) : null,
+    npm: facts.npm ? comparableNpm(facts.npm) : undefined,
     target: target ? { ...target, bins: sortBins(target.bins) } : null,
     binOwners: [...facts.binOwners].sort((a, b) =>
       a.name.localeCompare(b.name),
@@ -296,21 +410,38 @@ export function createGlobalPreview(
   now: Date,
 ): IGlobalPreview {
   const { current, target, location } = facts;
+  assertGlobalRepairAction(request.manager, request.action, request.package);
+  const npm = facts.npm;
+  // npm itself must always carry npm facts, and only npm itself may (G1-2).
+  const npmSelf = request.manager === 'npm' && request.package === 'npm';
+  if (Boolean(npm) !== npmSelf || (!npm && !current))
+    return refuse('PREVIEW_CHANGED');
+  const packageName = npm ? 'npm' : current?.name;
   if (
-    request.package !== current.name ||
+    request.package !== packageName ||
     request.manager !== location.manager ||
     (request.action === 'change'
       ? !target ||
-        target.name !== current.name ||
+        target.name !== packageName ||
         target.requestedVersion !== request.targetVersion
       : target !== null)
   )
     return refuse('PREVIEW_CHANGED');
-  const before = sortBins(current.bins);
+  const classification = npm
+    ? assertNpmOverlayMutable(request.action, npm)
+    : null;
+  const currentVersion = npm
+    ? npmTerminalVersion(npm, classification!.state)
+    : current!.version;
+  if (npm && target) assertNpmTarget(target, npm.nodeVersion, currentVersion);
+  const terminalAfter = npm ? (target?.version ?? npm.bundledVersion) : null;
+  const before = sortBins((npm ? npm.overlay?.package : current)?.bins ?? []);
   const after = sortBins(target?.bins ?? []);
-  const warnings = target
-    ? assessGlobalVersionChange(current.version, target.version)
-    : [];
+  const warnings = npm
+    ? npmSelfWarnings(request.action, currentVersion, terminalAfter!)
+    : target
+      ? assessGlobalVersionChange(current!.version, target.version)
+      : [];
   const preview: IGlobalPreview = {
     previewId,
     createdAt: now.toISOString(),
@@ -318,8 +449,8 @@ export function createGlobalPreview(
     manager: request.manager,
     managerVersion: location.tool.version,
     action: request.action,
-    package: current.name,
-    currentVersion: current.version,
+    package: packageName,
+    currentVersion,
     requestedVersion: target?.requestedVersion ?? null,
     targetVersion: target?.version ?? null,
     globalRoot: location.globalRoot,
@@ -350,9 +481,23 @@ export function createGlobalPreview(
     confirmText: globalConfirmText(
       request.manager,
       request.action,
-      current.name,
+      packageName,
       target?.version ?? null,
     ),
+    ...(npm
+      ? {
+          npm: {
+            appVersion: npm.bundledVersion,
+            terminalBefore: currentVersion,
+            terminalAfter: terminalAfter!,
+            prefix: location.prefix ?? npm.prefixResolved,
+            repairTargets:
+              request.action === 'repair'
+                ? classification!.repairTargets.map((entry) => entry.path)
+                : [],
+          },
+        }
+      : {}),
   };
   return structuredClone(preview);
 }

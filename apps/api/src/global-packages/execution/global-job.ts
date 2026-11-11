@@ -54,6 +54,7 @@ export class GlobalJob {
   private timer: unknown = null;
   private started = false;
   private launched = false;
+  private inProcess = false;
   private logsClosed = false;
   private probeUncertain = false;
   private stopVerified = false;
@@ -95,6 +96,7 @@ export class GlobalJob {
       droppedBytes: 0,
       preview: null,
       versions: null,
+      npmRepair: null,
     };
     this.logStore = createRunLogStore({
       jobId: seed.jobId,
@@ -148,9 +150,26 @@ export class GlobalJob {
     this.job.terminationVerified = false;
   }
 
-  async launch(command: IGlobalCommand): Promise<IRunProcessExit> {
+  // Each call authorizes one filesystem mutation. Cancellation is observed only
+  // between calls: an already started rm must settle before finalization.
+  async executeInProcess(work: () => Promise<void>): Promise<void> {
     this.checkpoint();
     if (this.launched)
+      throw new AppException(
+        409,
+        'Global mutation already launched',
+        'CONFLICT',
+      );
+    this.job.phase = 'executing';
+    this.inProcess = true;
+    this.job.mayHaveChanged = true;
+    this.job.terminationVerified = !this.probeUncertain;
+    await work();
+  }
+
+  async launch(command: IGlobalCommand): Promise<IRunProcessExit> {
+    this.checkpoint();
+    if (this.launched || this.inProcess)
       throw new AppException(
         409,
         'Global mutation already launched',

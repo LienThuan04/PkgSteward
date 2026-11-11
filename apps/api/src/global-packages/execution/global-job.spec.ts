@@ -50,6 +50,47 @@ function setup(timeoutMs?: number) {
 }
 
 describe('M7 job deadline and preflight stop', () => {
+  it('executes an in-process mutation without spawning and keeps termination verified', async () => {
+    const { job, child } = setup();
+    const wait = deferred<void>();
+    job.run(async (activity) => {
+      await activity.executeInProcess(async () => {
+        await wait.promise;
+      });
+    });
+    expect(job.snapshot()).toMatchObject({
+      phase: 'executing',
+      mayHaveChanged: true,
+      mutationSpawned: false,
+      terminationVerified: true,
+      exitCode: null,
+      npmRepair: null,
+    });
+    job.stop('cancel');
+    wait.resolve();
+    await job.settled();
+    expect(job.snapshot()).toMatchObject({
+      status: 'cancelled',
+      mayHaveChanged: true,
+      terminationVerified: true,
+    });
+    expect(child.launch).not.toHaveBeenCalled();
+  });
+
+  it('does not hide probe uncertainty after an in-process mutation', async () => {
+    const { job } = setup();
+    job.run(async (activity) => {
+      activity.noteProbeUncertain();
+      await activity.executeInProcess(async () => {});
+    });
+    await job.settled();
+    expect(job.snapshot()).toMatchObject({
+      status: 'termination_failed',
+      terminationVerified: false,
+      gateHeld: true,
+    });
+  });
+
   it('publishes the provisional job before work awaits', async () => {
     const { job } = setup();
     const wait = deferred<void>();

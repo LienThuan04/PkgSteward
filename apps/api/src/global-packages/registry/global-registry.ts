@@ -167,26 +167,29 @@ export class GlobalRegistry {
         signal,
       );
       signal.throwIfAborted();
-      const { versions, distTags } = metadata;
+      const { versions, distTags, deprecatedVersions = [] } = metadata;
       if (versions.length > 10_000 || Object.keys(distTags).length > 10_000)
         throw fail('LIMIT_EXCEEDED');
       const known = new Set(versions);
+      // Real packuments carry tag names a client cannot request (npm has `v6.14-next`):
+      // drop those instead of rejecting the catalog. Requestable tags must still resolve.
+      const tags = Object.entries(distTags).filter(
+        ([tag]) => isGlobalTargetVersion(tag) && !isGlobalExactVersion(tag),
+      );
       if (
         known.size !== versions.length ||
         versions.some((version) => !isGlobalExactVersion(version)) ||
-        Object.entries(distTags).some(
-          ([tag, version]) =>
-            !isGlobalTargetVersion(tag) ||
-            isGlobalExactVersion(tag) ||
-            !known.has(version),
-        )
+        new Set(deprecatedVersions).size !== deprecatedVersions.length ||
+        deprecatedVersions.some((version) => !known.has(version)) ||
+        tags.some(([, version]) => !known.has(version))
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
       return {
         manager: input.manager,
         package: input.packageName,
         versions,
-        tags: distTags,
+        tags: Object.fromEntries(tags),
+        deprecatedVersions,
       };
     });
   }
@@ -248,7 +251,12 @@ export class GlobalRegistry {
         !isProjectRecord(raw) ||
         raw.name !== input.packageName ||
         raw.version !== exact ||
-        !validDist(raw.dist)
+        !validDist(raw.dist) ||
+        (raw.engines !== undefined && !isProjectRecord(raw.engines)) ||
+        (isProjectRecord(raw.engines) &&
+          raw.engines.node !== undefined &&
+          (typeof raw.engines.node !== 'string' || !raw.engines.node.trim())) ||
+        (raw.deprecated !== undefined && typeof raw.deprecated !== 'string')
       )
         throw fail('REGISTRY_INVALID_RESPONSE');
       try {
@@ -259,6 +267,12 @@ export class GlobalRegistry {
           integrity: raw.dist.integrity,
           bins: normalizeGlobalBins(input.packageName, raw.bin),
           manifestHash: createHash('sha256').update(bytes).digest('hex'),
+          engines:
+            isProjectRecord(raw.engines) && typeof raw.engines.node === 'string'
+              ? raw.engines.node
+              : null,
+          deprecated:
+            typeof raw.deprecated === 'string' && raw.deprecated !== '',
         };
       } catch {
         throw fail('REGISTRY_INVALID_RESPONSE');

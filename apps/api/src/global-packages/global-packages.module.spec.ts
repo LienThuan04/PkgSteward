@@ -13,6 +13,7 @@ import type { IGlobalRuntimeBindings } from '@/global-packages/global-packages.m
 import { GlobalPackagesService } from '@/global-packages/global-packages.service';
 import { discoverGlobalLocation } from '@/global-packages/discovery/global-location';
 import type { IGlobalProbeOptions } from '@/global-packages/interfaces/global-packages.runtime';
+import { GLOBAL_PACKAGES_FS } from '@/global-packages/interfaces/global-packages.runtime';
 import {
   TEST_PATHS,
   testTool,
@@ -59,7 +60,12 @@ function bindings() {
     gate: f.runtime.gate,
     audit: f.runtime.audit,
     config: new ConfigService({ NPM_COMMAND_TIMEOUT_MS: '' }),
-    host: { platform: 'win32', execPath: TEST_PATHS.node, env },
+    host: {
+      platform: 'win32',
+      execPath: TEST_PATHS.node,
+      env,
+      nodeVersion: '24.19.0',
+    },
     fetcher: f.fetcher,
     launchProcess,
   };
@@ -67,6 +73,28 @@ function bindings() {
 }
 
 describe('GlobalPackagesModule runtime bindings', () => {
+  it('binds permanent rm and initializes the runtime/service without work', () => {
+    const providers = Reflect.getMetadata(
+      'providers',
+      GlobalPackagesModule,
+    ) as { provide?: symbol; useFactory?: () => { rm?: unknown } }[];
+    const fs = providers.find(
+      (provider) => provider.provide === GLOBAL_PACKAGES_FS,
+    )!.useFactory!();
+    expect(typeof fs.rm).toBe('function');
+    const b = bindings();
+    const runtime = createGlobalPackagesRuntime(b.input);
+    const service = new GlobalPackagesService(runtime);
+    expect(service.getSnapshot()).toBeNull();
+    expect(service.getLatest()).toBeNull();
+    expect(b.f.fs.lstat).not.toHaveBeenCalled();
+    expect(b.f.fs.open).not.toHaveBeenCalled();
+    expect(b.f.runtime.fs.rm).not.toHaveBeenCalled();
+    expect(b.f.probe).not.toHaveBeenCalled();
+    expect(b.f.fetcher).not.toHaveBeenCalled();
+    expect(b.launchProcess).not.toHaveBeenCalled();
+  });
+
   it('imports infrastructure without NpmRunnerModule or reader modules', () => {
     const imports = (Reflect.getMetadata('imports', GlobalPackagesModule) ??
       []) as { name?: string }[];
@@ -92,6 +120,8 @@ describe('GlobalPackagesModule runtime bindings', () => {
     expect(Object.isFrozen(runtime.environment)).toBe(true);
     expect(runtime.platform).toBe('win32');
     expect(runtime.execPath).toBe(TEST_PATHS.node);
+    expect(runtime.nodeVersion).toBe('24.19.0');
+    expect(typeof runtime.fs.rm).toBe('function');
     expect(runtime.paths).toEqual(b.input.paths);
     expect(runtime.now()).toBeInstanceOf(Date);
     expect(Number.isFinite(runtime.monotonicNow())).toBe(true);

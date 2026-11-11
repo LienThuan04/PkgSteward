@@ -16,6 +16,14 @@ for (const reason of ["PNPM_GLOBAL_NOT_CONFIGURED", "GLOBAL_GROUP_UNSUPPORTED"])
   })
 }
 
+test("global errors recognize the npm-version reasons (M9G) from details and top-level codes", () => {
+  for (const reason of ["NPM_PREFIX_IS_NODE_DIR", "NPM_OVERLAY_ABSENT", "NPM_OVERLAY_NOT_BROKEN", "NPM_DELEGATION_UNVERIFIED",
+    "TARGET_VERSION_UNSUPPORTED", "ENGINE_UNSUPPORTED", "FILE_IN_USE", "ACCESS_DENIED", "DELETE_FAILED", "PATH_TOO_LONG"]) {
+    assert.deepEqual(globalError(new ApiError(409, "TEST unrelated message", "CONFLICT", { reason })), { code: reason, statusCode: 409 })
+    assert.deepEqual(globalError(new ApiError(409, "TEST unrelated message", reason)), { code: reason, statusCode: 409 })
+  }
+})
+
 test("pnpm error copy cannot turn an unknown or malformed reason into a supported code", () => {
   for (const details of [{ reason: "TEST_FUTURE_REASON" }, { reason: null }, { reason: 11 }]) {
     assert.deepEqual(globalError(new ApiError(409, "PNPM_GLOBAL_NOT_CONFIGURED", "GLOBAL_GROUP_UNSUPPORTED", details)),

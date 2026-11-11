@@ -4,6 +4,7 @@ import type {
   GlobalMutationLaunch,
   GlobalProbeSpawn,
   IGlobalPreviewFacts,
+  IGlobalPackageFacts,
   IGlobalServiceRuntime,
 } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
@@ -75,7 +76,9 @@ export function testConfigIdentity(path: string, text = '') {
   };
 }
 
-export function testFacts(change = false): IGlobalPreviewFacts {
+export function testFacts(
+  change = false,
+): IGlobalPreviewFacts & { current: IGlobalPackageFacts } {
   const location = testLocation();
   const packageRoot = win32.join(location.globalRoot, 'test-tool');
   location.configIdentities = [
@@ -106,6 +109,8 @@ export function testFacts(change = false): IGlobalPreviewFacts {
           manifestHash: 'TEST-target-hash',
           integrity: `sha512-${Buffer.alloc(64, 1).toString('base64')}`,
           bins: [{ name: 'test-tool', target: 'dist/tool.js' }],
+          engines: null,
+          deprecated: false,
         }
       : null,
     binOwners: [{ name: 'test-tool', owner: 'test-tool' }],
@@ -272,6 +277,8 @@ export function testRuntime(): ITestGlobalRuntime {
   const clock = testClock();
   const child = testProcess();
   const fs = memoryFs();
+  fs.put(TEST_PATHS.prefix, { directory: true });
+  fs.put(win32.join(TEST_PATHS.prefix, 'node_modules'), { directory: true });
   fs.put(TEST_PATHS.userconfig, { text: '' });
   fs.put(TEST_PATHS.globalconfig, { text: '' });
   const token = Symbol('TEST mutation');
@@ -297,7 +304,15 @@ export function testRuntime(): ITestGlobalRuntime {
   );
   const scannedProjectPaths = jest.fn(() => [] as readonly string[]);
   const runtime: IGlobalServiceRuntime = {
-    fs: fs.fs,
+    fs: Object.assign(fs.fs, {
+      rm: jest
+        .fn<
+          Promise<void>,
+          [string, { recursive: true; force: false; maxRetries: 0 }]
+        >()
+        .mockResolvedValue(undefined),
+    }),
+    nodeVersion: '24.19.0',
     environment: {},
     platform: 'win32',
     execPath: TEST_PATHS.node,

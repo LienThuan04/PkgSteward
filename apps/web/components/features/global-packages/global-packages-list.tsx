@@ -22,6 +22,8 @@ export function GlobalPackagesList({ inventory, controller, blocked, onPreview }
     {inventory.packages.length ? <ul role="list" className="min-w-0 divide-y divide-border" aria-label={t("inventory")}>
       {inventory.packages.map(pkg => {
         const manageable = pkg.status === "manageable" && pkg.reason === null
+        // npm itself is managed by the npm version card above the list (M9G).
+        const npmSelf = inventory.manager === "npm" && pkg.name === "npm"
         return <li key={pkg.name} className="grid min-w-0 gap-4 p-4 text-body-sm md:grid-cols-[minmax(0,1fr)_minmax(0,0.65fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
           <div className="min-w-0 space-y-2">
             <h3 className="font-semibold [overflow-wrap:anywhere]">{pkg.name}</h3>
@@ -38,7 +40,8 @@ export function GlobalPackagesList({ inventory, controller, blocked, onPreview }
             <dt className="text-muted-foreground md:sr-only">{t("statusLabel")}</dt>
             <dd className="space-y-2 [overflow-wrap:anywhere]">
               <Badge variant="outline" className="h-auto min-h-6 max-w-full whitespace-normal">{t(manageable ? "ready" : `packageStatus.${pkg.status}`)}</Badge>
-              {!manageable ? <p><GlobalCodeMessage code={pkg.reason ?? (pkg.status === "linked" ? "LINKED_PACKAGE" : pkg.status === "protected" ? "PROTECTED_PACKAGE" : "UNKNOWN")} /></p> : null}
+              {npmSelf ? <p>{t("npmVersion.listHint")}</p>
+                : !manageable ? <p><GlobalCodeMessage code={pkg.reason ?? (pkg.status === "linked" ? "LINKED_PACKAGE" : pkg.status === "protected" ? "PROTECTED_PACKAGE" : "UNKNOWN")} /></p> : null}
             </dd>
           </dl>
           <div className="min-w-0 space-y-2">

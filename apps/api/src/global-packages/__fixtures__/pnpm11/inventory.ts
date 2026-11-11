@@ -1,7 +1,10 @@
 import { win32 } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { IGlobalInventoryDeps } from '@/global-packages/discovery/global-inventory';
-import type { IGlobalPreviewFacts } from '@/global-packages/interfaces/global-packages.runtime';
+import type {
+  IGlobalPreviewFacts,
+  IGlobalPackageFacts,
+} from '@/global-packages/interfaces/global-packages.runtime';
 import type { IPnpmGlobalGroupFacts } from '@/global-packages/interfaces/pnpm-global.types';
 import {
   memoryFs,
@@ -162,7 +165,9 @@ export function pnpmInventoryFixture() {
   };
 }
 
-export function pnpmPreviewFacts(): IGlobalPreviewFacts {
+export function pnpmPreviewFacts(): IGlobalPreviewFacts & {
+  current: IGlobalPackageFacts;
+} {
   const location = pnpmLocation();
   const installDir = win32.join(Q.root, PNPM_INSTALL);
   const modules = win32.join(installDir, 'node_modules');
@@ -230,6 +235,10 @@ export function pnpmPreviewFacts(): IGlobalPreviewFacts {
 }
 
 // Plain retained stat data; avoids using the product snapshotter to derive expectations.
-export function plainPnpmPreviewFacts(): IGlobalPreviewFacts {
-  return JSON.parse(JSON.stringify(pnpmPreviewFacts())) as IGlobalPreviewFacts;
+export function plainPnpmPreviewFacts(): IGlobalPreviewFacts & {
+  current: IGlobalPackageFacts;
+} {
+  return JSON.parse(
+    JSON.stringify(pnpmPreviewFacts()),
+  ) as IGlobalPreviewFacts & { current: IGlobalPackageFacts };
 }

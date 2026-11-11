@@ -7,7 +7,10 @@ import type {
   GlobalAction,
   IGlobalPreviewRequest,
 } from '@/global-packages/interfaces/global-packages.types';
-import { isGlobalTargetVersion } from '@/global-packages/policy/global-policy';
+import {
+  assertGlobalRepairAction,
+  isGlobalTargetVersion,
+} from '@/global-packages/policy/global-policy';
 
 export class GlobalPreviewDto
   extends GlobalVersionsDto
@@ -15,6 +18,25 @@ export class GlobalPreviewDto
 {
   @ApiProperty({ enum: [...GLOBAL_ACTIONS] })
   @IsIn([...GLOBAL_ACTIONS])
+  @ValidateBy({
+    name: 'globalRepairAction',
+    validator: {
+      validate(value: unknown, args?: ValidationArguments): boolean {
+        if (!args) return false;
+        const body = args.object as GlobalPreviewDto;
+        try {
+          assertGlobalRepairAction(
+            body.manager,
+            value as GlobalAction,
+            body.package,
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    },
+  })
   action!: GlobalAction;
 
   @ApiPropertyOptional({
@@ -29,7 +51,8 @@ export class GlobalPreviewDto
         const body = args.object as { action?: unknown };
         if (body.action === 'change') return isGlobalTargetVersion(value);
         return (
-          body.action === 'remove' && !Object.hasOwn(body, 'targetVersion')
+          (body.action === 'remove' || body.action === 'repair') &&
+          !Object.hasOwn(body, 'targetVersion')
         );
       },
     },

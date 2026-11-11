@@ -81,8 +81,12 @@ export function initialGlobalState(snapshot: GlobalSnapshot | null = null): Glob
     pollError: null, startUnknown: false, cancelUnknown: false, cancelPending: false, refreshing: false }
 }
 export function globalMutationSucceeded(job: GlobalJob): boolean {
-  return job.kind === "mutation" && job.status === "completed" && job.phase === "done" && job.mutationSpawned
-    && job.exitCode === 0 && job.auditWritten && job.terminationVerified && !job.failureCode && !job.gateHeld && !job.refreshRequired
+  // npm repair deletes files in-process: no child process, so success = every target deleted (M9G A15).
+  const executed = job.action === "repair"
+    ? job.mayHaveChanged && !!job.npmRepair && job.npmRepair.failed === null && job.npmRepair.remaining.length === 0
+    : job.mutationSpawned && job.exitCode === 0
+  return job.kind === "mutation" && job.status === "completed" && job.phase === "done" && executed
+    && job.auditWritten && job.terminationVerified && !job.failureCode && !job.gateHeld && !job.refreshRequired
 }
 export function globalActionPending(state: GlobalState, kind: GlobalJobKind, selection?: Pick<GlobalSelection, "manager" | "package"> & { action?: GlobalSelection["action"] }): boolean {
   const activity = state.activity

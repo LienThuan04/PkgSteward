@@ -246,6 +246,14 @@ export function assessGlobalVersionChange(
 export function getGlobalRisk(): IRisk {
   return assessRisk(['MACHINE_WIDE']);
 }
+export function assertGlobalRepairAction(
+  manager: GlobalManager,
+  action: GlobalAction,
+  packageName: string,
+): void {
+  if (action === 'repair' && (manager !== 'npm' || packageName !== 'npm'))
+    fail('INVALID_PACKAGE_SPEC', 400);
+}
 export function globalConfirmText(
   manager: GlobalManager,
   action: GlobalAction,
@@ -258,9 +266,10 @@ export function globalConfirmText(
     !isGlobalPackageName(packageName)
   )
     return fail('INVALID_PACKAGE_SPEC', 400);
-  if (action === 'remove') {
+  assertGlobalRepairAction(manager, action, packageName);
+  if (action === 'remove' || action === 'repair') {
     if (targetVersion !== null) return fail('INVALID_PACKAGE_SPEC', 400);
-    return `REMOVE GLOBAL ${manager} ${packageName}`;
+    return `${action === 'repair' ? 'REPAIR' : 'REMOVE'} GLOBAL ${manager} ${packageName}`;
   }
   if (targetVersion === null || !exactVersion(targetVersion))
     return fail('INVALID_PACKAGE_SPEC', 400);

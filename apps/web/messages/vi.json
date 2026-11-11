@@ -941,7 +941,36 @@
       "expiresAt": "Bản xem trước hết hạn lúc {time}",
       "sending": "Đang gửi…",
       "confirmRemove": "Gỡ gói global",
-      "confirmChange": "Đổi phiên bản global"
+      "confirmChange": "Đổi phiên bản global",
+      "confirmRestore": "Quay về npm đi kèm Node",
+      "confirmRepair": "Sửa npm",
+      "npmTerminal": "npm trong terminal",
+      "npmApp": "npm của PkgSteward",
+      "npmAppValue": "{version}, không đổi",
+      "repairWarning": "Các mục dưới đây bị xoá vĩnh viễn, không vào Thùng rác và không hoàn tác được. Đóng mọi terminal đang chạy npm trước khi sửa. Sau khi sửa, terminal dùng lại npm đi kèm Node.",
+      "repairTargets": "Mục sẽ bị xoá"
+    },
+    "npmVersion": {
+      "title": "Phiên bản npm",
+      "intro": "Đổi phiên bản npm mà các terminal trên máy dùng. PkgSteward vẫn chạy npm {version} đi kèm Node. Thao tác này áp dụng cho cả máy, khác với ghim npm cho một dự án ở trang chi tiết dự án.",
+      "terminal": "npm trong terminal",
+      "app": "npm của PkgSteward",
+      "appValue": "{version} (đi kèm Node, không đổi)",
+      "prefix": "Thư mục global",
+      "statusLabel": "Trạng thái",
+      "state": {
+        "absent": "Đang dùng npm đi kèm Node",
+        "present": "Đang dùng npm cài trong thư mục global",
+        "broken": "Bản npm trong thư mục global bị hỏng",
+        "linked": "npm trong thư mục global là liên kết, không quản lý được",
+        "unsupported": "Chưa hỗ trợ cách cài Node này"
+      },
+      "brokenHelp": "Lần cài hoặc gỡ npm trước đó chưa xong (ví dụ bị dừng hoặc mất điện). Sửa npm sẽ xoá các tệp npm còn sót trong thư mục global để terminal quay về npm đi kèm Node. Bản xem trước liệt kê đúng từng mục sẽ xoá.",
+      "restore": "Quay về npm đi kèm Node",
+      "repair": "Sửa npm",
+      "optionsHint": "Chỉ hiện npm 11 và 12 bản ổn định. Bản không hợp với phiên bản Node đang chạy sẽ bị từ chối ở bước xem trước.",
+      "noOptions": "Không có phiên bản npm 11 hoặc 12 nào để chọn.",
+      "listHint": "Đổi hoặc gỡ ở thẻ Phiên bản npm phía trên."
     },
     "risk": { "MACHINE_WIDE": "Thao tác này ảnh hưởng toàn máy, không chỉ một dự án." },
     "status": {
@@ -966,7 +995,8 @@
       "refreshRequired": "Chưa xác minh được danh sách cuối cùng. Làm mới danh sách sau khi dọn tiến trình; chưa thể xác nhận thành công.",
       "exitCode": "Mã thoát thực tế", "signal": "Tín hiệu kết thúc", "stopReason": "Lý do dừng",
       "stopReasons": { "cancel": "Người dùng yêu cầu dừng", "timeout": "Hết thời gian", "shutdown": "Backend đang tắt" },
-      "startedAt": "Bắt đầu lúc {time}", "finishedAt": "Kết thúc lúc {time}"
+      "startedAt": "Bắt đầu lúc {time}", "finishedAt": "Kết thúc lúc {time}",
+      "repairDeleted": "Đã xoá", "repairFailed": "Dừng tại", "repairRemaining": "Chưa xoá"
     },
     "errors": {
       "UNKNOWN": "Đã xảy ra lỗi chưa xác định. Kiểm tra trạng thái và nhật ký trước khi thao tác tiếp.",
@@ -1014,6 +1044,16 @@
       "MANAGER_DISABLED": "Phiên bản này chưa quản lý được gói global của trình quản lý gói này. Tạm thời hãy quản lý trong terminal.",
       "PNPM_GLOBAL_NOT_CONFIGURED": "Gói global của pnpm chưa được thiết lập. Hãy chạy pnpm setup trong terminal, mở terminal mới rồi khởi động lại PkgSteward.",
       "GLOBAL_GROUP_UNSUPPORTED": "Gói này được cài cùng các gói khác trong một lệnh pnpm add -g. PkgSteward chỉ hiển thị gói; hãy quản lý trong terminal.",
+      "NPM_PREFIX_IS_NODE_DIR": "Thư mục global của npm nằm trong thư mục cài Node (ví dụ khi dùng nvm). PkgSteward không thay npm của chính Node.",
+      "NPM_OVERLAY_ABSENT": "Chưa có npm cài trong thư mục global, terminal đã dùng npm đi kèm Node.",
+      "NPM_OVERLAY_NOT_BROKEN": "npm trong thư mục global không bị hỏng nên không cần sửa. Làm mới danh sách để xem trạng thái mới.",
+      "NPM_DELEGATION_UNVERIFIED": "Không chứng minh được terminal sẽ chạy bản npm mới: lệnh npm của Node có dạng chưa biết. Bạn vẫn có thể quay về hoặc sửa npm.",
+      "TARGET_VERSION_UNSUPPORTED": "Chỉ đổi được sang npm 11 hoặc 12 bản ổn định, không bị đánh dấu ngừng hỗ trợ.",
+      "ENGINE_UNSUPPORTED": "Phiên bản npm này không hỗ trợ phiên bản Node đang chạy. Chọn phiên bản khác.",
+      "FILE_IN_USE": "Một tệp đang được chương trình khác dùng, ví dụ terminal đang chạy npm. Đóng chương trình đó rồi thử lại.",
+      "ACCESS_DENIED": "Không có quyền xoá một mục. Kiểm tra quyền thư mục hoặc phần mềm diệt virus rồi thử lại.",
+      "DELETE_FAILED": "Không xoá được một mục. Làm mới danh sách rồi xem trước lại.",
+      "PATH_TOO_LONG": "Đường dẫn quá dài nên không xoá được.",
       "NO_PREVIEW": "Tạo và kiểm tra bản xem trước trước.",
       "RISK_NOT_ACKNOWLEDGED": "Xác nhận đã hiểu rủi ro trên toàn máy trước khi tiếp tục.",
       "CONFIRM_TEXT_MISMATCH": "Nội dung xác nhận phải khớp chính xác.",
@@ -1040,7 +1080,8 @@
       "PRERELEASE_VERSION": "Đích là phiên bản thử nghiệm.",
       "GLOBAL_CODE_EXECUTION": "Script vòng đời của gói có thể chạy trên toàn máy với quyền của bạn.",
       "GLOBAL_CONSUMERS_UNKNOWN": "Không thể phát hiện hết chương trình và terminal khác đang sử dụng gói này.",
-      "PROCESS_ESCAPE_RESIDUAL": "Mã của gói có thể tạo tiến trình ngoài cây được theo dõi. Sau sự cố, kiểm tra Task Manager; không bảo đảm cô lập tiến trình."
+      "PROCESS_ESCAPE_RESIDUAL": "Mã của gói có thể tạo tiến trình ngoài cây được theo dõi. Sau sự cố, kiểm tra Task Manager; không bảo đảm cô lập tiến trình.",
+      "TERMINAL_NPM_SWITCH": "Mọi terminal dùng npm của Node này sẽ chạy phiên bản mới từ lần chạy tiếp theo; terminal đang chạy npm giữ bản cũ đến khi chạy lại. Dự án có .npmrc đổi prefix có thể thấy bản khác. PkgSteward vẫn dùng npm đi kèm Node."
     }
   },
   "packageManagers": {
