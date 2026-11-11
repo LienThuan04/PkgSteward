@@ -413,6 +413,98 @@ describe('npm-self service integration (static facts, mocked IO)', () => {
     },
   );
 
+  it('restores with an unchanged linked Node-dir shim (unverified delegation) (G3-1)', async () => {
+    const f = setup('present');
+    // A reparse Node-dir shim makes delegation unverified: change is refused, restore stays allowed.
+    f.memory.put(win32.join(f.memory.nodeDir, 'npm.ps1'), {
+      link: true,
+      real: win32.join(f.memory.nodeDir, 'npm.ps1'),
+    });
+    const preview = await f.ready('remove');
+    const start = await f.execute(preview);
+    await f.service.waitForPreflight(start.jobId);
+    await settleJobs();
+    f.absent();
+    f.child.exit();
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'completed',
+      failureCode: null,
+      gateHeld: false,
+    });
+  });
+
+  it('refuses to delete a retired artifact whose on-disk name changed case (G3-2)', async () => {
+    const f = setup('absent');
+    const retired = 'D:\\TEST\\prefix\\node_modules\\.npm-p9Z75ZzS';
+    f.memory.put(retired, { directory: true });
+    const preview = await f.ready('repair');
+    expect(preview.npm!.repairTargets).toEqual([retired]);
+    f.memory.put(retired, {
+      directory: true,
+      real: 'D:\\TEST\\prefix\\node_modules\\.npm-P9Z75ZZS',
+    });
+    const start = await f.execute(preview);
+    await settleJobs();
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode: 'PREVIEW_CHANGED',
+    });
+    expect(f.rm).not.toHaveBeenCalled();
+  });
+
+  it('refuses a same-size shim edit by digest before rm (G3-3)', async () => {
+    const f = setup('broken');
+    const preview = await f.ready('repair');
+    const paths = preview.npm!.repairTargets;
+    f.rm.mockImplementation((path) => {
+      f.removeTree(path);
+      if (path === paths[0]) {
+        const text = f.memory.entries.get(paths[1].toLowerCase())!.text!;
+        // Same byte length, different content: only the digest can tell.
+        f.memory.put(paths[1], { text: `X${text.slice(1)}` });
+      }
+      return Promise.resolve();
+    });
+    const start = await f.execute(preview);
+    await settleJobs();
+    const job = await finishPnpmJob(f.service, start.jobId);
+    expect(job).toMatchObject({
+      status: 'failed',
+      failureCode: 'PREVIEW_CHANGED',
+    });
+    expect(job.npmRepair?.failed?.path).toBe(paths[1]);
+  });
+
+  it('fails a repair whose deletions did not take effect and releases the gate (G3-3)', async () => {
+    const f = setup('broken');
+    const preview = await f.ready('repair');
+    f.rm.mockImplementation(() => Promise.resolve()); // no-op: nothing removed
+    const start = await f.execute(preview);
+    await settleJobs();
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode: 'POSTCONDITION_FAILED',
+      mutationSpawned: false,
+      mayHaveChanged: true,
+      gateHeld: false,
+    });
+  });
+
+  it('fails a change whose installed overlay version is wrong (G3-3)', async () => {
+    const f = setup('absent');
+    const preview = await f.ready('change');
+    const start = await f.execute(preview);
+    await f.service.waitForPreflight(start.jobId);
+    await settleJobs();
+    f.present('12.0.0'); // npm exited 0 but another version is in place
+    f.child.exit();
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode: 'POSTCONDITION_FAILED',
+      gateHeld: false,
+    });
+  });
+
   it('keeps npmVersion when npm inventory fails', async () => {
     const f = setup('broken');
     const start = await f.service.inventory({ requestId: f.uuid() });

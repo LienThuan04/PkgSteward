@@ -854,7 +854,10 @@ export class GlobalPackagesService
         stat.isSymbolicLink() ||
         entry.reparse ||
         win32.resolve(real).toLowerCase() !==
-          win32.resolve(entry.path).toLowerCase()
+          win32.resolve(entry.path).toLowerCase() ||
+        // Retired names carry a case-sensitive hash: the stored name must match exactly (G3-2).
+        (win32.basename(entry.path).startsWith('.') &&
+          win32.basename(real) !== win32.basename(entry.path))
       )
         throw fail('PREVIEW_CHANGED');
       if (entry.type === 'directory') {
@@ -979,6 +982,12 @@ export class GlobalPackagesService
         if (!next) return false;
         const a = shim.entry,
           b = next.entry;
+        // Any entry type must simply be unchanged: a linked or folder shim is what makes
+        // delegation unverified, and restore/repair stay allowed then (G3-1).
+        const fields =
+          a?.type === 'directory'
+            ? (['dev', 'ino'] as const)
+            : (['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'] as const);
         return a === null || b === null
           ? a === b
           : a.path === b.path &&
@@ -987,11 +996,8 @@ export class GlobalPackagesService
               a.reparse === b.reparse &&
               a.sha256 === b.sha256 &&
               a.text === b.text &&
-              a.type === 'file' &&
-              !a.reparse &&
-              sameRunnerIdentity(
-                retainedStat(a.identity.stat),
-                b.identity.stat,
+              fields.every(
+                (field) => a.identity.stat[field] === b.identity.stat[field],
               );
       })
     );
