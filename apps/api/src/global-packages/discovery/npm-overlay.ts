@@ -137,14 +137,24 @@ export async function readNpmSelfFacts(
         signal.throwIfAborted();
       } catch (error) {
         signal.throwIfAborted();
-        // Invalid UTF-8 or a newly oversized file is an unsafe physical entry.
-        // Keep it unreadable for policy refusal; propagate I/O and race errors.
+        // Invalid UTF-8 at rest is an unsafe physical entry: keep it unreadable for
+        // policy refusal. A file that changed under us is a race, never "broken" (G2-3).
         if (
           error instanceof AppException &&
           (error.details as { reason?: string } | undefined)?.reason ===
             'CONFIG_UNSUPPORTED'
-        )
+        ) {
+          const again = await fs.lstat(path);
+          signal.throwIfAborted();
+          const againReal = await fs.realpath(path);
+          signal.throwIfAborted();
+          if (
+            !sameRunnerIdentity(entry.identity.stat, again) ||
+            key(againReal) !== key(realPath)
+          )
+            throw failure();
           return entry;
+        }
         throw error;
       }
       signal.throwIfAborted();
@@ -213,8 +223,7 @@ export async function readNpmSelfFacts(
         key(parent.realPath) !== key(parent.path)
       )
         return null;
-      await assertGlobalDirectory(win32.dirname(target), fs, signal, true);
-      signal.throwIfAborted();
+      // The bin folder itself was just proven a real directory; its ancestors earlier (G2-2).
       const entry = await pathFact(target);
       signal.throwIfAborted();
       if (
@@ -236,20 +245,38 @@ export async function readNpmSelfFacts(
     };
   };
 
+  // Only the prefix and its root identify the location; failures there keep
+  // LOCATION_AMBIGUOUS. Anything read inside the prefix maps to INVENTORY_FAILED (G2-2).
+  let prefixResolved: string;
+  let prefixDirectory: INpmPathFacts | null;
+  let prefixReal: string;
+  let root: string;
+  let rootDirectory: INpmPathFacts | null;
   try {
-    const prefixResolved = win32.resolve(location.prefix);
+    prefixResolved = win32.resolve(location.prefix);
     await assertGlobalDirectory(prefixResolved, fs, signal);
     signal.throwIfAborted();
-    const prefixDirectory = await pathFact(prefixResolved);
+    prefixDirectory = await pathFact(prefixResolved);
     signal.throwIfAborted();
     if (!prefixDirectory) throw failure('LOCATION_AMBIGUOUS');
-    const prefixReal = win32.resolve(prefixDirectory.realPath);
-    const root = win32.join(prefixReal, 'node_modules');
+    prefixReal = win32.resolve(prefixDirectory.realPath);
+    root = win32.join(prefixReal, 'node_modules');
     await assertGlobalDirectory(root, fs, signal);
     signal.throwIfAborted();
-    const rootDirectory = await pathFact(root);
+    rootDirectory = await pathFact(root);
     signal.throwIfAborted();
     if (!rootDirectory) throw failure('LOCATION_AMBIGUOUS');
+  } catch (error) {
+    signal.throwIfAborted();
+    if (
+      error instanceof AppException &&
+      (error.details as { reason?: string } | undefined)?.reason ===
+        'LOCATION_AMBIGUOUS'
+    )
+      throw error;
+    throw failure();
+  }
+  try {
     const facts: INpmSelfFacts = {
       nodeVersion,
       nodeDir: win32.dirname(location.tool.file),
@@ -273,8 +300,7 @@ export async function readNpmSelfFacts(
       retired: [],
       repairTargets: [],
     };
-    // Do not interpret the bundled package as a prefix overlay.
-    if (classifyNpmOverlay(facts).state === 'unsupported') return facts;
+    // Node-dir delegation is a fact about Node, reported for every layout (G2-4).
     for (const name of NPM_SHIM_NAMES) {
       const entry = await pathFact(win32.join(facts.nodeDir, name), true);
       signal.throwIfAborted();
@@ -291,6 +317,8 @@ export async function readNpmSelfFacts(
       key(prefixScript.realPath) === key(prefixScript.path)
     )
       facts.prefixScript = { file: prefixScript.identity, sha256: '' };
+    // Do not interpret the bundled package as a prefix overlay.
+    if (classifyNpmOverlay(facts).state === 'unsupported') return facts;
 
     const directory = await pathFact(win32.join(root, 'npm'));
     signal.throwIfAborted();
@@ -316,21 +344,28 @@ export async function readNpmSelfFacts(
         relative,
       ))
         candidates.add(path);
+    const seen = new Set<string>();
     for (const path of candidates) {
       const entry = await pathFact(path, true);
       signal.throwIfAborted();
-      if (entry) facts.retired.push(entry);
+      if (!entry) continue;
+      // lstat ignores case on NTFS; keep the stored name so the case-sensitive
+      // hash check in policy sees what is really on disk (G2-1).
+      if (!entry.reparse && key(entry.realPath) === key(path)) {
+        entry.path = win32.join(
+          win32.dirname(path),
+          win32.basename(entry.realPath),
+        );
+        entry.identity = { ...entry.identity, path: entry.path };
+      }
+      if (seen.has(key(entry.path))) continue;
+      seen.add(key(entry.path));
+      facts.retired.push(entry);
     }
     facts.repairTargets = classifyNpmOverlay(facts).repairTargets;
     return facts;
-  } catch (error) {
+  } catch {
     signal.throwIfAborted();
-    if (
-      error instanceof AppException &&
-      (error.details as { reason?: string } | undefined)?.reason ===
-        'LOCATION_AMBIGUOUS'
-    )
-      throw error;
     throw failure();
   }
 }

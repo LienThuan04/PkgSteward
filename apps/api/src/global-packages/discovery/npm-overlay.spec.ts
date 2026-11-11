@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { createHash } from 'node:crypto';
 import { win32 } from 'node:path';
 import { readNpmSelfFacts, summarizeNpmVersion } from './npm-overlay';
+import { assertNpmOverlayMutable } from '../policy/npm-overlay';
 import { npmDiscoveryFixture } from '../__fixtures__/npm-overlay/discovery';
 import { expectGlobalReason } from '../__fixtures__/global-adapters';
 
@@ -325,6 +326,86 @@ describe('static npm-self discovery', () => {
       return stat;
     });
     await expectGlobalReason(() => read(fixture), 'INVENTORY_FAILED');
+  });
+  it('records the on-disk name of a retired artifact so a wrong-case hash is refused (G2-1)', async () => {
+    const fixture = npmDiscoveryFixture();
+    const exact = 'D:\\TEST\\prefix\\node_modules\\.npm-p9Z75ZzS';
+    const onDisk = 'D:\\TEST\\prefix\\node_modules\\.npm-P9Z75ZZS';
+    // NTFS: lstat ignores case, realpath returns the stored name.
+    fixture.put(exact, { directory: true, real: onDisk });
+    const facts = await read(fixture);
+    expect(facts.retired.map(({ path }) => path)).toEqual([onDisk]);
+    expect(summarizeNpmVersion(facts).overlayState).toBe('broken');
+    expect(() => assertNpmOverlayMutable('repair', facts)).toThrow(
+      expect.objectContaining({
+        details: { reason: 'BIN_CONFLICT' },
+      }) as Error,
+    );
+  });
+  it('reports a manifest that turned unreadable mid-read as changed, not broken (G2-3)', async () => {
+    const fixture = npmDiscoveryFixture(9);
+    const manifest = win32.join(fixture.overlay, 'package.json');
+    const original = fixture.lstat.getMockImplementation()!;
+    let calls = 0;
+    fixture.lstat.mockImplementation(async (path) => {
+      const stat = await original(path);
+      // Grows past the limit right after the first observation.
+      return path === manifest && ++calls > 1
+        ? { ...stat, size: 2 * 1024 * 1024 }
+        : stat;
+    });
+    await expectGlobalReason(() => read(fixture), 'INVENTORY_FAILED');
+  });
+  it('maps failures inside the overlay to INVENTORY_FAILED, not LOCATION_AMBIGUOUS (G2-2)', async () => {
+    const fixture = npmDiscoveryFixture(9);
+    const bin = win32.join(fixture.overlay, 'bin');
+    const original = fixture.lstat.getMockImplementation()!;
+    fixture.lstat.mockImplementation((path) =>
+      path === bin
+        ? Promise.reject(
+            Object.assign(new Error('TEST denied bin'), { code: 'EACCES' }),
+          )
+        : original(path),
+    );
+    await expectGlobalReason(() => read(fixture), 'INVENTORY_FAILED');
+  });
+  it('still reports Node-dir delegation for an unsupported overlapping layout (G2-4)', async () => {
+    const fixture = npmDiscoveryFixture();
+    fixture.location.protectedPaths = [fixture.location.prefix!];
+    const facts = await read(fixture);
+    expect(summarizeNpmVersion(facts)).toMatchObject({
+      overlayState: 'unsupported',
+      delegation: 'verified',
+    });
+  });
+  it('reports a missing npm-prefix.js as unverified delegation (G2-5)', async () => {
+    const fixture = npmDiscoveryFixture();
+    fixture.remove(fixture.prefixScript);
+    expect(summarizeNpmVersion(await read(fixture))).toMatchObject({
+      overlayState: 'absent',
+      delegation: 'unverified',
+      reason: 'NPM_DELEGATION_UNVERIFIED',
+    });
+  });
+  it('treats a dangling overlay link as linked and a file overlay as broken without targets (G2-5)', async () => {
+    const dangling = npmDiscoveryFixture();
+    dangling.put(dangling.overlay, { link: true, directory: true });
+    const original = dangling.realpath.getMockImplementation()!;
+    dangling.realpath.mockImplementation((path) =>
+      path === dangling.overlay
+        ? Promise.reject(
+            Object.assign(new Error('TEST gone'), { code: 'ENOENT' }),
+          )
+        : original(path),
+    );
+    expect(summarizeNpmVersion(await read(dangling)).overlayState).toBe(
+      'linked',
+    );
+    const file = npmDiscoveryFixture();
+    file.put(file.overlay, { text: 'TEST not a directory' });
+    const facts = await read(file);
+    expect(summarizeNpmVersion(facts).overlayState).toBe('broken');
+    expect(facts.repairTargets).toEqual([]);
   });
   it('retains the existing refusal for an uninitialized prefix root', async () => {
     const fixture = npmDiscoveryFixture();
