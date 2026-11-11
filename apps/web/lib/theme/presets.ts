@@ -11,11 +11,11 @@
  *   3. Thêm tên hiển thị vào messages/*.json → theme.presets.<id>.
  *   4. Chạy `pnpm theme:check`.
  */
-export const themePresets = ["pinterest"] as const
+export const themePresets = ["default"] as const
 
 export type ThemePreset = (typeof themePresets)[number]
 
-export const defaultThemePreset: ThemePreset = "pinterest"
+export const defaultThemePreset: ThemePreset = "default"
 
 /** Cookie lưu preset người dùng chọn (đọc ở server để render đúng ngay lần đầu). */
 export const THEME_PRESET_COOKIE = "THEME_PRESET"

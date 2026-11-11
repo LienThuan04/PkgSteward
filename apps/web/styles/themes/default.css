@@ -1,5 +1,5 @@
 /*
- * Preset "pinterest" — tầng 1 (giá trị thật) của hệ thống theme.
+ * Preset "default" — tầng 1 (giá trị thật) của hệ thống theme.
  * Bản tối do dự án tự suy ra từ bản sáng và phải qua `pnpm theme:check`
  * (tương phản WCAG AA).
  *
@@ -12,7 +12,7 @@
  */
 
 :root,
-[data-theme="pinterest"] {
+[data-theme="default"] {
   color-scheme: light;
 
   /* Nền & chữ */
@@ -28,7 +28,7 @@
   --popover-foreground: #000000;
 
   /* Hành động */
-  --primary: #e60023; /* Pinterest Red — tối đa 1 CTA mỗi màn hình */
+  --primary: #e60023; /* Màu chủ đạo — tối đa 1 CTA mỗi màn hình */
   --primary-foreground: #ffffff;
   --primary-pressed: #cc001f;
   --secondary: #e5e5e0; /* secondary-bg */
@@ -63,7 +63,7 @@
 }
 
 :root.dark,
-[data-theme="pinterest"].dark {
+[data-theme="default"].dark {
   color-scheme: dark;
 
   --background: #141412;

@@ -169,6 +169,5 @@ Each app also carries its own `LICENSE` file.
 ## Trademarks
 
 PkgSteward is an independent project. It is not affiliated with, endorsed by, or sponsored by npm, Inc. / GitHub,
-the OpenJS Foundation (Node.js), the pnpm or Yarn projects, Vercel (Next.js) or Pinterest, Inc. Product names are
-used only to describe compatibility. The frontend's default theme is inspired by Pinterest's public design language;
-it does not use Pinterest's logo or fonts.
+the OpenJS Foundation (Node.js), the pnpm or Yarn projects, or Vercel (Next.js). Product names are used only to
+describe compatibility. The frontend uses no third-party logos or brand fonts.

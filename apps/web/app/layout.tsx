@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 
 import "@/app/globals.css"
 
-// Inter: font thay thế gần nhất cho Pin Sans. Preset trỏ
+// Inter: font chữ chính của giao diện. Preset trỏ
 // --font-body vào biến này, nên đổi font chỉ cần đổi biến trong preset.
 const inter = Inter({
   variable: "--font-inter",

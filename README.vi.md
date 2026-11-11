@@ -159,6 +159,5 @@ tác giả tương ứng. Xem danh sách đầy đủ cùng phiên bản và gi�
 ## Thương hiệu
 
 PkgSteward là dự án độc lập, không liên kết, không được bảo trợ hay tài trợ bởi npm, Inc. / GitHub, OpenJS
-Foundation (Node.js), dự án pnpm hay Yarn, Vercel (Next.js) hoặc Pinterest, Inc. Tên sản phẩm chỉ được dùng để mô tả
-khả năng tương thích. Theme mặc định của frontend lấy cảm hứng từ ngôn ngữ thiết kế công khai của Pinterest;
-dự án không dùng logo hay font của Pinterest.
+Foundation (Node.js), dự án pnpm hay Yarn, hoặc Vercel (Next.js). Tên sản phẩm chỉ được dùng để mô tả khả năng tương
+thích. Frontend không dùng logo hay font thương hiệu của bên thứ ba.
