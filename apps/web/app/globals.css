@@ -4,7 +4,7 @@
 
 /* Hệ thống theme 3 tầng: preset (styles/themes) → token (styles/tokens.css) → component */
 @import "../styles/tokens.css";
-@import "../styles/themes/pinterest.css";
+@import "../styles/themes/default.css";
 
 @custom-variant dark (&:is(.dark *));
 

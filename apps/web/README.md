@@ -359,7 +359,7 @@ Three layers, so a component never hard-codes a color:
 ESLint (in `app/`, `components/`, `hooks/`) rejects fixed palette classes (`bg-red-500`), hex values in classes
 (`bg-[#fff]`) and `dark:` variants. Use `cn` from `@/lib/utils`, which knows the theme's custom tokens.
 
-Light / dark / system mode is handled by next-themes. The default preset is `pinterest`; the selected preset is stored
+Light / dark / system mode is handled by next-themes. The default preset is `default`; the selected preset is stored
 in a cookie so the server renders it directly.
 
 To add a preset: create `styles/themes/<id>.css` and import it in `app/globals.css`, add `<id>` to

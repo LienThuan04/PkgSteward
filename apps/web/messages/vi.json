@@ -166,7 +166,7 @@
     "dark": "Tối",
     "system": "Theo hệ thống",
     "presets": {
-      "pinterest": "Pinterest"
+      "default": "Mặc định"
     }
   },
   "locale": {

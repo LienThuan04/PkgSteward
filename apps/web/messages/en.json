@@ -166,7 +166,7 @@
     "dark": "Dark",
     "system": "System",
     "presets": {
-      "pinterest": "Pinterest"
+      "default": "Default"
     }
   },
   "locale": {
