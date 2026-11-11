@@ -9,6 +9,7 @@ import type {
   IGlobalBin,
 } from '@/global-packages/interfaces/global-packages.types';
 import type { IAuditRecord } from '@/core/audit-log/interfaces/audit-log.types';
+import type { IFileDeleterDeps } from '@/file-ops/deletion/file-deleter';
 import type {
   IPnpmGlobalConfig,
   IPnpmGlobalGroupFacts,
@@ -221,6 +222,9 @@ export const GLOBAL_PACKAGES_FS = Symbol('GLOBAL_PACKAGES_FS');
 export const GLOBAL_PACKAGES_PROCESS = Symbol('GLOBAL_PACKAGES_PROCESS');
 
 export interface IGlobalServiceRuntime extends IGlobalRuntime {
+  // Optional for read-only/custom adapters; production always binds both.
+  fs: IRunnerFs & Partial<Pick<IFileDeleterDeps, 'rm'>>;
+  nodeVersion?: string;
   platform: NodeJS.Platform;
   execPath: string;
   paths: {

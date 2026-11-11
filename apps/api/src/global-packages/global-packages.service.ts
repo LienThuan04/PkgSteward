@@ -12,6 +12,7 @@ import type {
   IGlobalJob,
   IGlobalJobStart,
   IGlobalLogPage,
+  IGlobalNpmVersion,
   IGlobalPreviewRequest,
   IGlobalSnapshot,
   IGlobalVersionsRequest,
@@ -27,6 +28,8 @@ import type {
   IGlobalRegistryInput,
   IGlobalPackageFacts,
   GlobalProbeSpawn,
+  INpmSelfFacts,
+  INpmPathFacts,
 } from '@/global-packages/interfaces/global-packages.runtime';
 import {
   AppException,
@@ -46,6 +49,17 @@ import {
   discoverGlobalLocation,
 } from '@/global-packages/discovery/global-location';
 import { readGlobalInventory } from '@/global-packages/discovery/global-inventory';
+import {
+  readNpmSelfFacts,
+  summarizeNpmVersion,
+} from '@/global-packages/discovery/npm-overlay';
+import {
+  assertNpmOverlayMutable,
+  assertNpmTarget,
+  classifyNpmOverlay,
+  npmTerminalVersion,
+} from '@/global-packages/policy/npm-overlay';
+import { deleteTarget } from '@/file-ops/deletion/file-deleter';
 import type { IGlobalInventoryResult } from '@/global-packages/discovery/global-inventory';
 import { assessPnpmGlobalRegistryPolicy } from '@/global-packages/config/pnpm-global-config';
 import { GlobalRegistry } from '@/global-packages/registry/global-registry';
@@ -57,7 +71,11 @@ import {
 } from '@/global-packages/config/global-config';
 import { assertGlobalPackageMutable } from '@/global-packages/policy/global-policy';
 import { buildGlobalCommand } from '@/global-packages/execution/global-command';
-import { readRunnerFile } from '@/npm-runner/toolchain/runner-tool';
+import {
+  readRunnerFile,
+  revalidateRunnerTool,
+  sameRunnerIdentity,
+} from '@/npm-runner/toolchain/runner-tool';
 import { createHash } from 'node:crypto';
 import { win32 } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -92,6 +110,19 @@ const fail = (reason: GlobalReasonCode, status = 409): AppException =>
         : 'CONFLICT',
     { reason },
   );
+const npmSelf = (request: IGlobalPreviewRequest): boolean =>
+  request.manager === 'npm' && request.package === 'npm';
+// Preview storage strips stat methods. Runner identities contain regular files
+// and the package directory; their validated paths retain that distinction.
+const retainedStat = (
+  stat: INpmPathFacts['identity']['stat'],
+  directory = false,
+) => ({
+  ...stat,
+  isFile: () => !directory,
+  isDirectory: () => directory,
+  isSymbolicLink: () => false,
+});
 const reasonOf = (error: unknown): GlobalReasonCode => {
   const details = error instanceof AppException ? error.details : undefined;
   const reason: unknown =
@@ -279,6 +310,11 @@ export class GlobalPackagesService
       activity.checkpoint();
       assertGlobalPreviewUnchanged(record.facts, finalFacts);
       active.location = finalFacts.location as IGlobalResolvedLocation;
+      active.facts = finalFacts;
+      if (npmSelf(active.request!) && active.request!.action === 'repair') {
+        await this.repairNpm(finalFacts.npm!, activity);
+        return;
+      }
       const command = buildGlobalCommand({
         location: active.location,
         environment: this.runtime.environment,
@@ -478,6 +514,14 @@ export class GlobalPackagesService
   ): Promise<IGlobalJobStart> {
     this.assertOpen();
     const request = structuredClone(input);
+    if (
+      kind === 'preview' &&
+      'manager' in request &&
+      request.manager === 'pnpm' &&
+      'package' in request &&
+      request.package === 'npm'
+    )
+      throw fail('PROTECTED_PACKAGE', 403);
     const fingerprint = canonical({ kind, ...request });
     const replay = this.replay(request.requestId, fingerprint);
     if (replay) return await Promise.resolve(replay);
@@ -724,6 +768,235 @@ export class GlobalPackagesService
     }
   }
 
+  private readNpm(
+    location: IGlobalResolvedLocation,
+    signal: AbortSignal,
+  ): Promise<INpmSelfFacts> {
+    return readNpmSelfFacts(
+      {
+        location,
+        nodeVersion: this.runtime.nodeVersion ?? process.versions.node,
+        signal,
+      },
+      { fs: this.runtime.fs },
+    );
+  }
+
+  private async readNpmFacts(
+    request: IGlobalPreviewRequest,
+    location: IGlobalResolvedLocation,
+    activity: GlobalJob,
+    finalCheck: boolean,
+    locations: IGlobalResolvedLocation[],
+  ): Promise<IGlobalPreviewFacts> {
+    let npm = await this.readNpm(location, activity.signal);
+    activity.checkpoint();
+    assertNpmOverlayMutable(request.action, npm);
+    const policy = await this.registryInput(location, request, activity.signal);
+    activity.checkpoint();
+    const registryChangeAllowed = this.registryDecision(
+      location,
+      policy,
+    ).changeAllowed;
+    if (request.action === 'change' && !registryChangeAllowed)
+      throw fail('REGISTRY_CONFIG_UNSUPPORTED');
+    const target =
+      request.action === 'change'
+        ? await this.registry.getTarget(
+            { ...policy, manager: 'npm' },
+            request.targetVersion!,
+            activity.signal,
+          )
+        : null;
+    activity.checkpoint();
+    if (finalCheck) {
+      await this.registryInput(location, request, activity.signal);
+      npm = await this.readNpm(location, activity.signal);
+      activity.checkpoint();
+    }
+    const classification = assertNpmOverlayMutable(request.action, npm);
+    if (target)
+      assertNpmTarget(
+        target,
+        npm.nodeVersion,
+        npmTerminalVersion(npm, classification.state),
+      );
+    // The classifier is the single source, also used after final preview comparison.
+    npm.repairTargets = classification.repairTargets;
+    return snapshotGlobalPreviewFacts({
+      location,
+      current: npm.overlay?.package ?? null,
+      target,
+      binOwners: [],
+      npm,
+      registryChangeAllowed,
+      locations,
+    });
+  }
+
+  private async assertRepairTarget(
+    npm: INpmSelfFacts,
+    entry: INpmPathFacts,
+    signal: AbortSignal,
+  ): Promise<void> {
+    try {
+      await assertGlobalDirectory(npm.prefixReal, this.runtime.fs, signal);
+      await assertGlobalDirectory(
+        win32.join(npm.prefixReal, 'node_modules'),
+        this.runtime.fs,
+        signal,
+      );
+      signal.throwIfAborted();
+      const stat = await this.runtime.fs.lstat(entry.path);
+      const real = await this.runtime.fs.realpath(entry.path);
+      signal.throwIfAborted();
+      if (
+        stat.isSymbolicLink() ||
+        entry.reparse ||
+        win32.resolve(real).toLowerCase() !==
+          win32.resolve(entry.path).toLowerCase()
+      )
+        throw fail('PREVIEW_CHANGED');
+      if (entry.type === 'directory') {
+        if (
+          !stat.isDirectory?.() ||
+          stat.isFile() ||
+          stat.dev !== entry.identity.stat.dev ||
+          stat.ino !== entry.identity.stat.ino
+        )
+          throw fail('PREVIEW_CHANGED');
+      } else {
+        const data = await readRunnerFile(
+          entry.path,
+          64 * 1024,
+          this.runtime.fs,
+          signal,
+          'win32',
+          {
+            checkParent: () =>
+              assertGlobalDirectory(
+                win32.dirname(entry.path),
+                this.runtime.fs,
+                signal,
+              ),
+          },
+        );
+        signal.throwIfAborted();
+        if (
+          !data ||
+          !sameRunnerIdentity(retainedStat(entry.identity.stat), stat) ||
+          !sameRunnerIdentity(
+            retainedStat(entry.identity.stat),
+            data.identity.stat,
+          ) ||
+          createHash('sha256').update(data.bytes).digest('hex') !== entry.sha256
+        )
+          throw fail('PREVIEW_CHANGED');
+      }
+    } catch {
+      signal.throwIfAborted();
+      throw fail('PREVIEW_CHANGED');
+    }
+  }
+
+  private async repairNpm(
+    npm: INpmSelfFacts,
+    activity: GlobalJob,
+  ): Promise<void> {
+    const targets = classifyNpmOverlay(npm).repairTargets;
+    const progress = {
+      deleted: [] as string[],
+      failed: null as { path: string; code: GlobalReasonCode } | null,
+      remaining: targets.map((entry) => entry.path),
+    };
+    activity.update({ npmRepair: progress });
+    for (const entry of targets) {
+      activity.checkpoint();
+      try {
+        await this.assertRepairTarget(npm, entry, activity.signal);
+      } catch (error) {
+        activity.checkpoint();
+        progress.failed = { path: entry.path, code: reasonOf(error) };
+        activity.update({ npmRepair: progress });
+        throw error;
+      }
+      activity.checkpoint();
+      await activity.executeInProcess(async () => {
+        const outcome = await deleteTarget(
+          { path: entry.path, kind: 'node_modules', apparentBytes: 0 },
+          {
+            rm: (path, options) => {
+              if (!this.runtime.fs.rm)
+                return Promise.reject(fail('DELETE_FAILED'));
+              return this.runtime.fs.rm(path, options);
+            },
+            // kind node_modules always selects permanent rm; never recycle npm.
+            recycleBin: {
+              recycle: () => Promise.reject(fail('DELETE_FAILED')),
+            },
+          },
+        );
+        if (outcome.status === 'failed') {
+          const code =
+            outcome.errorCode === 'TARGET_GONE'
+              ? 'PREVIEW_CHANGED'
+              : outcome.errorCode;
+          const reason =
+            GLOBAL_REASON_CODES.find((reason) => reason === code) ??
+            'DELETE_FAILED';
+          progress.failed = { path: entry.path, code: reason };
+          activity.update({ npmRepair: progress });
+          throw fail(reason);
+        }
+        progress.deleted.push(entry.path);
+        progress.remaining.shift();
+        activity.update({ npmRepair: progress });
+      });
+    }
+  }
+
+  private npmInfrastructureUnchanged(
+    before: INpmSelfFacts,
+    after: INpmSelfFacts,
+  ): boolean {
+    const config = (
+      a: INpmSelfFacts['prefixScript'],
+      b: INpmSelfFacts['prefixScript'],
+    ): boolean =>
+      a === null || b === null
+        ? a === b
+        : a.file.path === b.file.path &&
+          a.sha256 === b.sha256 &&
+          sameRunnerIdentity(retainedStat(a.file.stat), b.file.stat);
+    return (
+      before.bundledVersion === after.bundledVersion &&
+      before.nodeDir === after.nodeDir &&
+      before.packageDir === after.packageDir &&
+      config(before.prefixScript, after.prefixScript) &&
+      before.nodeDirShims.length === after.nodeDirShims.length &&
+      before.nodeDirShims.every((shim) => {
+        const next = after.nodeDirShims.find(({ name }) => name === shim.name);
+        if (!next) return false;
+        const a = shim.entry,
+          b = next.entry;
+        return a === null || b === null
+          ? a === b
+          : a.path === b.path &&
+              a.realPath === b.realPath &&
+              a.type === b.type &&
+              a.reparse === b.reparse &&
+              a.sha256 === b.sha256 &&
+              a.text === b.text &&
+              a.type === 'file' &&
+              !a.reparse &&
+              sameRunnerIdentity(
+                retainedStat(a.identity.stat),
+                b.identity.stat,
+              );
+      })
+    );
+  }
+
   private async readFacts(
     request: IGlobalPreviewRequest,
     activity: GlobalJob,
@@ -752,6 +1025,14 @@ export class GlobalPackagesService
         throw error;
     }
     assertGlobalLocationsDistinct(locations);
+    if (npmSelf(request))
+      return await this.readNpmFacts(
+        request,
+        location,
+        activity,
+        finalCheck,
+        locations,
+      );
     let inventory = await readGlobalInventory(location, {
       fs: this.runtime.fs,
       environment: this.runtime.environment,
@@ -856,6 +1137,19 @@ export class GlobalPackagesService
                 'INVENTORY_FAILED',
               ]
             : []),
+          ...(npmSelf(request)
+            ? [
+                'NPM_OVERLAY_ABSENT',
+                'NPM_OVERLAY_NOT_BROKEN',
+                'NPM_DELEGATION_UNVERIFIED',
+                'NPM_PREFIX_IS_NODE_DIR',
+                'TARGET_VERSION_UNSUPPORTED',
+                'ENGINE_UNSUPPORTED',
+                'NO_VERSION_CHANGE',
+                'INVENTORY_FAILED',
+                'INPUT_CHANGED',
+              ]
+            : []),
         ].includes(reasonOf(error))
       )
         throw fail('PREVIEW_CHANGED');
@@ -899,6 +1193,23 @@ export class GlobalPackagesService
       }
       locations.push(location);
       assertGlobalLocationsDistinct(locations);
+      // Unreadable npm-self facts hide the npm version card; they never fail the inventory (A14).
+      let npmVersion: IGlobalNpmVersion | undefined;
+      if (manager === 'npm')
+        try {
+          npmVersion = summarizeNpmVersion(
+            await this.readNpm(location, activity.signal),
+          );
+        } catch (error) {
+          activity.checkpoint();
+          if (
+            !['INVENTORY_FAILED', 'LOCATION_AMBIGUOUS'].includes(
+              reasonOf(error),
+            )
+          )
+            throw error;
+        }
+      activity.checkpoint();
       let result: IGlobalInventoryResult;
       try {
         result = await readGlobalInventory(location, {
@@ -910,7 +1221,7 @@ export class GlobalPackagesService
       } catch (error) {
         activity.checkpoint();
         // Location overlap was checked above and must never be swallowed here.
-        if (manager !== 'pnpm' || !isolatablePnpmError(error)) throw error;
+        if (!isolatablePnpmError(error)) throw error;
         managers.push({
           manager,
           available: false,
@@ -919,6 +1230,7 @@ export class GlobalPackagesService
           globalRoot: null,
           binDir: null,
           packages: [],
+          ...(npmVersion ? { npmVersion } : {}),
         });
         continue;
       }
@@ -931,6 +1243,7 @@ export class GlobalPackagesService
         globalRoot: location.globalRoot,
         binDir: location.binDir,
         packages: result.packages,
+        ...(npmVersion ? { npmVersion } : {}),
       });
     }
     this.snapshot = structuredClone({
@@ -952,10 +1265,17 @@ export class GlobalPackagesService
       operation: `global-packages.${request.action}`,
       operationId: job.jobId,
       phase,
-      targets: [
-        active.location?.globalRoot ?? active.facts?.location.globalRoot ?? '',
-        request.package,
-      ],
+      targets:
+        request.action === 'repair' && active.facts?.npm
+          ? classifyNpmOverlay(active.facts.npm).repairTargets.map(
+              (entry) => entry.path,
+            )
+          : [
+              active.location?.globalRoot ??
+                active.facts?.location.globalRoot ??
+                '',
+              request.package,
+            ],
       method: `${request.manager}:${request.action}`,
       risk: { level: 'high', codes: ['MACHINE_WIDE'] },
       result,
@@ -1002,74 +1322,107 @@ export class GlobalPackagesService
     active: IActiveGlobal,
     job: IGlobalJob,
   ): Promise<void> {
-    if (job.mutationSpawned && !active.invalidated) {
+    const changed = job.mutationSpawned || job.mayHaveChanged;
+    if (changed && !active.invalidated) {
       if (this.snapshot) this.snapshot.stale = true;
       this.previews.clear();
       active.invalidated = true;
     }
-    if (job.mutationSpawned && job.terminationVerified && !active.refreshed) {
+    if (changed && job.terminationVerified && !active.refreshed) {
       try {
-        // Cleanup uses its own signal: cancelling mutation must not cancel verification.
-        const result = await readGlobalInventory(active.location!, {
-          fs: this.runtime.fs,
-          environment: this.runtime.environment,
-          signal: new AbortController().signal,
-          spawn: this.probeFor(active.activity),
-        });
-        const request = active.request!;
-        if (
-          request.manager === 'pnpm' &&
-          (!result.ownershipComplete ||
-            result.pnpmInventory?.ownershipComplete !== true)
-        )
-          throw fail('INVENTORY_FAILED');
-        const row = result.packages.find(
-          (entry) => entry.name === request.package,
-        );
-        const facts = result.facts.find(
-          (entry) => entry.name === request.package,
-        );
-        const bins = (value: readonly { name: string; target: string }[]) =>
-          [...value].sort((a, b) => a.name.localeCompare(b.name));
-        active.postcondition =
-          request.action === 'remove'
-            ? !row && !facts
-            : !!row &&
-              !!facts &&
-              (request.manager !== 'pnpm' ||
-                (result.packages.filter(
-                  (entry) => entry.name === request.package,
-                ).length === 1 &&
-                  result.facts.filter((entry) => entry.name === request.package)
-                    .length === 1)) &&
-              row.status === 'manageable' &&
-              row.version === active.facts?.target?.version &&
-              facts.version === active.facts?.target?.version &&
-              isDeepStrictEqual(
-                bins(row.bins),
-                bins(active.facts?.target?.bins ?? []),
-              ) &&
-              isDeepStrictEqual(
-                bins(facts.bins),
-                bins(active.facts?.target?.bins ?? []),
-              );
-        active.refreshed = true;
+        if (active.request && npmSelf(active.request)) {
+          const signal = new AbortController().signal;
+          const npm = await this.readNpm(active.location!, signal);
+          const classification = classifyNpmOverlay(npm);
+          let bundledUnchanged = true;
+          try {
+            const tool = active.facts!.location.tool;
+            await revalidateRunnerTool(
+              {
+                ...tool,
+                identities: tool.identities.map((identity) => ({
+                  ...identity,
+                  stat: retainedStat(
+                    identity.stat,
+                    win32.resolve(identity.path).toLowerCase() ===
+                      win32.resolve(tool.packageDir).toLowerCase(),
+                  ),
+                })),
+              },
+              this.runtime.fs,
+              signal,
+            );
+          } catch {
+            bundledUnchanged = false;
+          }
+          active.postcondition =
+            bundledUnchanged &&
+            this.npmInfrastructureUnchanged(active.facts!.npm!, npm) &&
+            (active.request.action === 'change'
+              ? classification.state === 'present' &&
+                npm.overlay?.package?.version === active.facts?.target?.version
+              : classification.state === 'absent');
+          active.refreshed = true;
+        } else {
+          // Cleanup uses its own signal: cancelling mutation must not cancel verification.
+          const result = await readGlobalInventory(active.location!, {
+            fs: this.runtime.fs,
+            environment: this.runtime.environment,
+            signal: new AbortController().signal,
+            spawn: this.probeFor(active.activity),
+          });
+          const request = active.request!;
+          if (
+            request.manager === 'pnpm' &&
+            (!result.ownershipComplete ||
+              result.pnpmInventory?.ownershipComplete !== true)
+          )
+            throw fail('INVENTORY_FAILED');
+          const row = result.packages.find(
+            (entry) => entry.name === request.package,
+          );
+          const facts = result.facts.find(
+            (entry) => entry.name === request.package,
+          );
+          const bins = (value: readonly { name: string; target: string }[]) =>
+            [...value].sort((a, b) => a.name.localeCompare(b.name));
+          active.postcondition =
+            request.action === 'remove'
+              ? !row && !facts
+              : !!row &&
+                !!facts &&
+                (request.manager !== 'pnpm' ||
+                  (result.packages.filter(
+                    (entry) => entry.name === request.package,
+                  ).length === 1 &&
+                    result.facts.filter(
+                      (entry) => entry.name === request.package,
+                    ).length === 1)) &&
+                row.status === 'manageable' &&
+                row.version === active.facts?.target?.version &&
+                facts.version === active.facts?.target?.version &&
+                isDeepStrictEqual(
+                  bins(row.bins),
+                  bins(active.facts?.target?.bins ?? []),
+                ) &&
+                isDeepStrictEqual(
+                  bins(facts.bins),
+                  bins(active.facts?.target?.bins ?? []),
+                );
+          active.refreshed = true;
+        }
       } catch {
         /* Explicit cleanup retry only, never another mutation. */
       }
     }
-    job.refreshRequired = job.mutationSpawned && !active.refreshed;
+    job.refreshRequired = changed && !active.refreshed;
     if (!job.terminationVerified) {
       job.status = 'termination_failed';
       job.failureCode = 'TERMINATION_UNCONFIRMED';
     } else if (job.status === 'completed' && job.refreshRequired) {
       job.status = 'failed';
       job.failureCode = 'INVENTORY_FAILED';
-    } else if (
-      job.status === 'completed' &&
-      job.mutationSpawned &&
-      !active.postcondition
-    ) {
+    } else if (job.status === 'completed' && changed && !active.postcondition) {
       job.status = 'failed';
       job.failureCode = 'POSTCONDITION_FAILED';
     }

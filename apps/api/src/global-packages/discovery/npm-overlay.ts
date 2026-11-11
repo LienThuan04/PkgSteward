@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { win32 } from 'node:path';
 import { AppException } from '@/common/exceptions/app.exception';
-import type { IRunnerFs } from '@/npm-runner/interfaces/npm-runner.types';
+import type {
+  IRunnerFileIdentity,
+  IRunnerFs,
+} from '@/npm-runner/interfaces/npm-runner.types';
 import {
   readRunnerFile,
   runnerIdentity,
@@ -47,6 +50,23 @@ const failure = (reason: GlobalReasonCode = 'INVENTORY_FAILED') =>
   });
 const digest = (bytes: Uint8Array) =>
   createHash('sha256').update(bytes).digest('hex');
+
+// Locations retained in preview records were structured-cloned, which drops stat
+// methods. Rebuild them like the service's retainedStat: packageDir is the only folder.
+const retainedIdentity = (
+  file: IRunnerFileIdentity,
+  packageDir: string,
+): IRunnerFileIdentity => {
+  if (typeof file.stat.isFile === 'function')
+    return runnerIdentity(file.path, file.stat);
+  const directory = key(file.path) === key(packageDir);
+  return runnerIdentity(file.path, {
+    ...file.stat,
+    isFile: () => !directory,
+    isDirectory: () => directory,
+    isSymbolicLink: () => false,
+  });
+};
 
 export interface INpmSelfFactsInput {
   location: Pick<
@@ -290,7 +310,7 @@ export async function readNpmSelfFacts(
       // Identity-only observations use an empty digest, never a fabricated hash.
       // Bundled tool content is revalidated by the caller's runner-tool boundary.
       bundledIdentities: location.tool.identities.map((file) => ({
-        file: runnerIdentity(file.path, file.stat),
+        file: retainedIdentity(file, location.tool.packageDir),
         sha256: '',
       })),
       nodeDirShims: [],

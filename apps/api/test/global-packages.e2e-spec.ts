@@ -41,6 +41,10 @@ import type {
 } from '@/global-packages/interfaces/global-packages.types';
 import { flushJobs } from '@/global-packages/__fixtures__/global-lifecycle';
 import { globalHttpFixture } from '@/../test/mocks/global-packages';
+import { npmLifecycleFixture } from '@/global-packages/__fixtures__/npm-overlay/lifecycle';
+import { npmTarget } from '@/global-packages/__fixtures__/npm-overlay/facts';
+import * as locationAdapter from '@/global-packages/discovery/global-location';
+import { GlobalRegistry } from '@/global-packages/registry/global-registry';
 
 jest.mock('execa', () => ({ execa: jest.fn() }));
 jest.mock('node:fs/promises', () => {
@@ -223,6 +227,100 @@ describe('Global packages HTTP PC (real Nest/service/adapters, mocked IO)', () =
     acknowledgedRisks: ['MACHINE_WIDE'],
     confirmText: preview.confirmText,
   });
+
+  it.each(['change', 'remove', 'repair'] as const)(
+    'runs npm-self %s over HTTP without npm ls',
+    async (action) => {
+      const npm = npmLifecycleFixture(
+        action === 'change'
+          ? 'absent'
+          : action === 'remove'
+            ? 'present'
+            : 'broken',
+      );
+      f.runtime = npm.runtime;
+      jest
+        .spyOn(locationAdapter, 'discoverGlobalLocation')
+        .mockImplementation((manager) =>
+          manager !== 'npm'
+            ? Promise.reject(
+                new AppException(409, 'TEST unavailable', 'CONFLICT', {
+                  reason: 'TOOL_NOT_FOUND',
+                }),
+              )
+            : Promise.resolve(npm.location),
+        );
+      jest.spyOn(GlobalRegistry.prototype, 'getVersions').mockResolvedValue({
+        manager: 'npm',
+        package: 'npm',
+        versions: ['11.17.0', '12.2.2'],
+        deprecatedVersions: [],
+        tags: { latest: '12.2.2' },
+      });
+      jest
+        .spyOn(GlobalRegistry.prototype, 'getTarget')
+        .mockResolvedValue(npmTarget());
+      const app = await open();
+      const waitDone = async () => {
+        for (let index = 0; index < 40; index++) {
+          const job = await latest(app);
+          if (job?.phase === 'done') return job;
+        }
+        throw new Error('TEST npm-self HTTP job did not finish');
+      };
+      await request(app.getHttpServer())
+        .post(`${base}/versions`)
+        .send({ requestId: uuid(++serial), manager: 'npm', package: 'npm' })
+        .expect(202);
+      expect((await waitDone()).versions?.versions).toEqual([
+        '11.17.0',
+        '12.2.2',
+      ]);
+      await request(app.getHttpServer())
+        .post(`${base}/preview`)
+        .send({
+          requestId: uuid(++serial),
+          manager: 'npm',
+          package: 'npm',
+          action,
+          ...(action === 'change' ? { targetVersion: 'latest' } : {}),
+        })
+        .expect(202);
+      const previewJob = await waitDone();
+      expect(previewJob.status).toBe('completed');
+      const preview = previewJob.preview!;
+      const bad = await request(app.getHttpServer())
+        .post(`${base}/execute`)
+        .send({ ...consent(preview), confirmText: 'TEST wrong confirmation' })
+        .expect(400);
+      assertError(bad, 400, 'VALIDATION_ERROR');
+      expect(appendFile).not.toHaveBeenCalled();
+      await request(app.getHttpServer())
+        .post(`${base}/execute`)
+        .send(consent(preview))
+        .expect(202);
+      if (action !== 'repair') {
+        if (action === 'change') npm.present();
+        else npm.absent();
+        npm.child.exit();
+      }
+      expect(await waitDone()).toMatchObject({
+        status: 'completed',
+        gateHeld: false,
+        refreshRequired: false,
+        mutationSpawned: action !== 'repair',
+        mayHaveChanged: true,
+      });
+      if (action === 'repair') {
+        expect(npm.child.launch).not.toHaveBeenCalled();
+        expect(npm.rm.mock.calls.map(([path]) => path)).toEqual(
+          preview.npm!.repairTargets,
+        );
+      } else expect(npm.child.launch).toHaveBeenCalledTimes(1);
+      expect(npm.probe).not.toHaveBeenCalled();
+      expect(appendFile).toHaveBeenCalledTimes(2);
+    },
+  );
   const assertError = (
     response: request.Response,
     statusCode: number,

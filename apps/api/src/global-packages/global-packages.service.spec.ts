@@ -3,6 +3,7 @@ import { win32 } from 'node:path';
 import { AppException } from '@/common/exceptions/app.exception';
 import * as locationAdapter from '@/global-packages/discovery/global-location';
 import * as inventoryAdapter from '@/global-packages/discovery/global-inventory';
+import * as npmOverlayAdapter from '@/global-packages/discovery/npm-overlay';
 import { GlobalRegistry } from '@/global-packages/registry/global-registry';
 import { GlobalPackagesService } from '@/global-packages/global-packages.service';
 import { readPnpmGlobalConfig } from '@/global-packages/config/pnpm-global-config';
@@ -38,8 +39,394 @@ import {
   testLocation,
 } from '@/global-packages/__fixtures__/global-adapters';
 import { pnpmPreviewFacts } from '@/global-packages/__fixtures__/pnpm11/inventory';
+import { npmLifecycleFixture } from '@/global-packages/__fixtures__/npm-overlay/lifecycle';
+import { npmTarget } from '@/global-packages/__fixtures__/npm-overlay/facts';
 import { PNPM_TEST_PATHS as Q } from '@/global-packages/__fixtures__/pnpm11/facts';
 import type { IPnpmGlobalPolicy } from '@/global-packages/interfaces/pnpm-global.types';
+
+// npm-self reads ~40 exact paths statically per check; a fixed microtask budget is not enough.
+// Mocks resolve as microtasks and the clock is fake, so one macrotask turn settles the chain.
+const settleJobs = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+describe('npm-self service integration (static facts, mocked IO)', () => {
+  afterEach(() => jest.restoreAllMocks());
+  function setup(state: 'absent' | 'present' | 'broken' = 'absent') {
+    const f = npmLifecycleFixture(state);
+    jest
+      .spyOn(locationAdapter, 'discoverGlobalLocation')
+      .mockImplementation((manager) =>
+        manager !== 'npm'
+          ? Promise.reject(
+              new AppException(409, 'TEST unavailable', 'CONFLICT', {
+                reason: 'TOOL_NOT_FOUND',
+              }),
+            )
+          : Promise.resolve(f.location),
+      );
+    const inventory = jest
+      .spyOn(inventoryAdapter, 'readGlobalInventory')
+      .mockRejectedValue(
+        new AppException(409, 'TEST npm ls fails', 'CONFLICT', {
+          reason: 'INVENTORY_FAILED',
+        }),
+      );
+    const target = jest
+      .spyOn(GlobalRegistry.prototype, 'getTarget')
+      .mockResolvedValue(npmTarget());
+    const service = new GlobalPackagesService(f.runtime);
+    const request = (action: IGlobalPreviewRequest['action']) => ({
+      requestId: f.uuid(),
+      manager: 'npm' as const,
+      package: 'npm',
+      action,
+      ...(action === 'change' ? { targetVersion: 'latest' } : {}),
+    });
+    const ready = async (action: IGlobalPreviewRequest['action']) => {
+      const start = await service.preview(request(action));
+      const job = await finishPnpmJob(service, start.jobId);
+      expect(job).toMatchObject({ status: 'completed', failureCode: null });
+      return job.preview!;
+    };
+    const execute = (preview: IGlobalPreview) =>
+      service.execute(
+        testConsent({
+          requestId: f.uuid(),
+          previewId: preview.previewId,
+          confirmText: preview.confirmText,
+        }),
+      );
+    return { ...f, service, inventory, target, request, ready, execute };
+  }
+
+  it.each(['change', 'remove'] as const)(
+    'executes %s through bundled npm and checks static postconditions',
+    async (action) => {
+      const f = setup(action === 'change' ? 'absent' : 'present');
+      f.location.tool.identities = [
+        {
+          path: f.location.tool.packageDir,
+          stat: await f.runtime.fs.lstat(f.location.tool.packageDir),
+        },
+      ];
+      if (action === 'remove') f.present('11.17.0'); // Equal to bundled is still restorable.
+      const preview = await f.ready(action);
+      expect(preview.npm).toMatchObject({
+        appVersion: '11.17.0',
+        terminalBefore: '11.17.0',
+      });
+      const start = await f.execute(preview);
+      await f.service.waitForPreflight(start.jobId);
+      await settleJobs();
+      expect(f.child.launch).toHaveBeenCalledTimes(1);
+      expect(f.child.launch.mock.calls[0][0].args).toEqual(
+        expect.arrayContaining([
+          action === 'change' ? 'install' : 'uninstall',
+          '--global',
+          '--',
+          action === 'change' ? 'npm@12.2.2' : 'npm',
+        ]),
+      );
+      if (action === 'change') f.present();
+      else f.absent();
+      f.child.exit();
+      expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+        status: 'completed',
+        gateHeld: false,
+        refreshRequired: false,
+        npmRepair: null,
+      });
+      expect(f.inventory).not.toHaveBeenCalled();
+    },
+  );
+
+  it('repairs broken npm without launch, updates progress and audits exact targets', async () => {
+    const f = setup('broken');
+    const preview = await f.ready('repair');
+    const start = await f.execute(preview);
+    const job = await finishPnpmJob(f.service, start.jobId);
+    expect(job).toMatchObject({
+      status: 'completed',
+      mutationSpawned: false,
+      mayHaveChanged: true,
+      exitCode: null,
+      terminationVerified: true,
+      gateHeld: false,
+      npmRepair: {
+        deleted: preview.npm!.repairTargets,
+        failed: null,
+        remaining: [],
+      },
+    });
+    expect(f.rm.mock.calls.map(([path]) => path)).toEqual(
+      preview.npm!.repairTargets,
+    );
+    expect(
+      f.rm.mock.calls.every(
+        ([, options]) =>
+          options.maxRetries === 0 &&
+          options.force === false &&
+          options.recursive,
+      ),
+    ).toBe(true);
+    expect(f.audit.mock.calls.map(([record]) => record.targets)).toEqual([
+      preview.npm!.repairTargets,
+      preview.npm!.repairTargets,
+    ]);
+    expect(f.child.launch).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn mock, never called with this
+    expect(f.runtime.resolveTool).not.toHaveBeenCalled();
+    expect(f.inventory).not.toHaveBeenCalled();
+  });
+
+  it('deletes the overlay before exact retired artifacts and ignores directory timestamp drift', async () => {
+    const f = setup('broken');
+    const retired = win32.join(f.location.globalRoot, '.npm-p9Z75ZzS');
+    f.memory.put(retired, { directory: true });
+    const preview = await f.ready('repair');
+    expect(preview.npm!.repairTargets.slice(-2)).toEqual([
+      f.memory.overlay,
+      retired,
+    ]);
+    const lstat = f.memory.lstat.getMockImplementation()!;
+    f.memory.lstat.mockImplementation(async (path) => {
+      const stat = await lstat(path);
+      return path === f.memory.overlay && f.rm.mock.calls.length > 0
+        ? { ...stat, mtimeMs: 50, ctimeMs: 60, size: 100 }
+        : stat;
+    });
+    const start = await f.execute(preview);
+    await settleJobs();
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'completed',
+      npmRepair: {
+        deleted: preview.npm!.repairTargets,
+        remaining: [],
+        failed: null,
+      },
+    });
+  });
+
+  it('pins directory dev/ino immediately before rm', async () => {
+    const f = setup('broken');
+    const preview = await f.ready('repair');
+    const lstat = f.memory.lstat.getMockImplementation()!;
+    f.memory.lstat.mockImplementation(async (path) => {
+      const stat = await lstat(path);
+      return path === f.memory.overlay && f.rm.mock.calls.length > 0
+        ? { ...stat, ino: 77 }
+        : stat;
+    });
+    const start = await f.execute(preview);
+    await settleJobs();
+    const job = await finishPnpmJob(f.service, start.jobId);
+    expect(job).toMatchObject({
+      status: 'failed',
+      failureCode: 'PREVIEW_CHANGED',
+      npmRepair: {
+        failed: { path: f.memory.overlay, code: 'PREVIEW_CHANGED' },
+        remaining: [f.memory.overlay],
+      },
+    });
+    expect(f.rm).toHaveBeenCalledTimes(6);
+  });
+
+  it.each([
+    ['absent', 'remove', 'NPM_OVERLAY_ABSENT'],
+    ['absent', 'repair', 'NPM_OVERLAY_NOT_BROKEN'],
+    ['present', 'repair', 'NPM_OVERLAY_NOT_BROKEN'],
+  ] as const)('refuses %s / %s', async (state, action, failureCode) => {
+    const f = setup(state);
+    const start = await f.service.preview(f.request(action));
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode,
+    });
+  });
+
+  it.each(['linked', 'unsupported', 'delegation', 'engine', 'target'] as const)(
+    'refuses unsafe %s change',
+    async (variant) => {
+      const f = setup(variant === 'linked' ? 'present' : 'absent');
+      const failureCode = {
+        linked: 'LINKED_PACKAGE',
+        unsupported: 'NPM_PREFIX_IS_NODE_DIR',
+        delegation: 'NPM_DELEGATION_UNVERIFIED',
+        engine: 'ENGINE_UNSUPPORTED',
+        target: 'TARGET_VERSION_UNSUPPORTED',
+      }[variant];
+      if (variant === 'linked')
+        f.memory.put(f.memory.overlay, { directory: true, link: true });
+      if (variant === 'unsupported') {
+        f.location.prefix = f.memory.nodeDir;
+        f.location.binDir = f.memory.nodeDir;
+        f.location.globalRoot = win32.join(f.memory.nodeDir, 'node_modules');
+      }
+      if (variant === 'delegation')
+        f.memory.put(win32.join(f.memory.nodeDir, 'npm.cmd'), {
+          text: 'TEST foreign',
+        });
+      if (variant === 'engine') f.runtime.nodeVersion = '24.0.0';
+      if (variant === 'target')
+        f.target.mockResolvedValue(npmTarget({ version: '10.9.10' }));
+      const start = await f.service.preview(f.request('change'));
+      expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+        status: 'failed',
+        failureCode,
+      });
+      expect(f.child.launch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects pnpm/npm mutation before discovery with HTTP 403', async () => {
+    const f = setup();
+    await expect(
+      f.service.preview({ ...f.request('remove'), manager: 'pnpm' }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      details: { reason: 'PROTECTED_PACKAGE' },
+    });
+    expect(locationAdapter.discoverGlobalLocation).not.toHaveBeenCalled();
+  });
+
+  it.each(['preflight', 'final'] as const)(
+    'maps changed npm facts at %s boundary to PREVIEW_CHANGED',
+    async (boundary) => {
+      const f = setup('present');
+      const preview = await f.ready('remove');
+      if (boundary === 'preflight') f.absent();
+      else
+        f.audit.mockImplementation((record) => {
+          if (record.phase === 'intent') f.absent();
+          return Promise.resolve();
+        });
+      const start = await f.execute(preview);
+      if (boundary === 'preflight')
+        await expect(
+          f.service.waitForPreflight(start.jobId),
+        ).rejects.toMatchObject({ details: { reason: 'PREVIEW_CHANGED' } });
+      expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+        status: 'failed',
+        failureCode: 'PREVIEW_CHANGED',
+        gateHeld: false,
+      });
+      expect(f.child.launch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['busy', 'cancel', 'identity', 'gone', 'parent'] as const)(
+    'stops repair between targets on %s',
+    async (variant) => {
+      const f = setup('broken');
+      const preview = await f.ready('repair');
+      const paths = preview.npm!.repairTargets;
+      f.rm.mockImplementation(async (path) => {
+        if (variant === 'busy' && path === paths[1])
+          throw Object.assign(new Error('TEST busy'), { code: 'EBUSY' });
+        f.removeTree(path);
+        if (path === paths[0]) {
+          if (variant === 'cancel')
+            await f.service.cancel(f.service.getLatest()!.jobId);
+          if (variant === 'identity')
+            f.memory.put(paths[1], { text: 'TEST changed' });
+          if (variant === 'gone') f.memory.remove(paths[1]);
+          if (variant === 'parent')
+            f.memory.put(f.location.globalRoot, {
+              directory: true,
+              link: true,
+            });
+        }
+      });
+      const start = await f.execute(preview);
+      const job = await finishPnpmJob(f.service, start.jobId);
+      expect(job).toMatchObject({
+        status: variant === 'cancel' ? 'cancelled' : 'failed',
+        failureCode:
+          variant === 'busy'
+            ? 'FILE_IN_USE'
+            : variant === 'cancel'
+              ? 'CANCELLED'
+              : 'PREVIEW_CHANGED',
+        mayHaveChanged: true,
+        mutationSpawned: false,
+      });
+      expect(job.npmRepair?.deleted).toEqual([paths[0]]);
+      expect(job.npmRepair?.remaining).toEqual(paths.slice(1));
+      if (variant !== 'cancel')
+        expect(job.npmRepair?.failed).toEqual({
+          path: paths[1],
+          code: variant === 'busy' ? 'FILE_IN_USE' : 'PREVIEW_CHANGED',
+        });
+      expect(f.rm).toHaveBeenCalledTimes(variant === 'busy' ? 2 : 1);
+      expect(f.child.launch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['unmet', 'unreadable', 'node-shim', 'bundled'] as const)(
+    'handles %s postcondition and gate ownership',
+    async (variant) => {
+      const f = setup('present');
+      f.location.tool.identities = [
+        {
+          path: f.location.tool.file,
+          stat: await f.runtime.fs.lstat(f.location.tool.file),
+        },
+      ];
+      const preview = await f.ready('remove');
+      const start = await f.execute(preview);
+      await f.service.waitForPreflight(start.jobId);
+      await settleJobs();
+      if (variant === 'unreadable') f.memory.remove(f.location.globalRoot);
+      if (variant === 'node-shim') {
+        f.absent();
+        f.memory.put(win32.join(f.memory.nodeDir, 'npm.cmd'), {
+          text: 'TEST replaced',
+        });
+      }
+      if (variant === 'bundled') {
+        f.absent();
+        f.memory.put(f.location.tool.file, {
+          text: 'TEST replaced node executable',
+        });
+      }
+      f.child.exit();
+      const job = await finishPnpmJob(f.service, start.jobId);
+      expect(job).toMatchObject({
+        status: 'failed',
+        failureCode:
+          variant === 'unreadable'
+            ? 'INVENTORY_FAILED'
+            : 'POSTCONDITION_FAILED',
+        refreshRequired: variant === 'unreadable',
+        gateHeld: variant === 'unreadable',
+      });
+      if (variant === 'unreadable') {
+        f.memory.put(f.location.globalRoot, { directory: true });
+        f.absent();
+        await f.service.cancel(start.jobId);
+        expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+          refreshRequired: false,
+          gateHeld: false,
+        });
+        expect(f.child.launch).toHaveBeenCalledTimes(1);
+      }
+      expect(f.inventory).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps npmVersion when npm inventory fails', async () => {
+    const f = setup('broken');
+    const start = await f.service.inventory({ requestId: f.uuid() });
+    expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
+      status: 'completed',
+    });
+    expect(f.service.getSnapshot()?.managers[0]).toMatchObject({
+      manager: 'npm',
+      available: false,
+      reason: 'INVENTORY_FAILED',
+      npmVersion: { bundledVersion: '11.17.0', overlayState: 'broken' },
+    });
+  });
+});
 
 // TEST không phải yêu cầu nghiệp vụ. Memory-only service boundary; no host IO.
 const emptyPnpmInventory = (): IGlobalInventoryResult => ({
@@ -620,6 +1007,23 @@ describe('pnpm 11 service integration', () => {
     expect(f.probe).not.toHaveBeenCalled();
   });
 
+  it('keeps both inventories when static npm-self facts are unavailable', async () => {
+    const f = setupPnpmService();
+    jest.spyOn(npmOverlayAdapter, 'readNpmSelfFacts').mockRejectedValue(
+      new AppException(409, 'TEST unreadable npm facts', 'CONFLICT', {
+        reason: 'INVENTORY_FAILED',
+      }),
+    );
+    const start = await f.service.inventory({ requestId: f.uuid() });
+    expect((await finishPnpmJob(f.service, start.jobId)).status).toBe(
+      'completed',
+    );
+    const [npm, pnpm] = f.service.getSnapshot()!.managers;
+    expect(npm).toMatchObject({ manager: 'npm', available: true });
+    expect(npm.npmVersion).toBeUndefined();
+    expect(pnpm).toMatchObject({ manager: 'pnpm', available: true });
+    expect(f.child.launch).not.toHaveBeenCalled();
+  });
   it('preserves npm inventory if pnpm static inventory is unreadable', async () => {
     const f = setupPnpmService();
     f.inventory.mockImplementation((location) =>

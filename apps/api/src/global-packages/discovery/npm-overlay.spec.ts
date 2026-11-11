@@ -407,6 +407,28 @@ describe('static npm-self discovery', () => {
     expect(summarizeNpmVersion(facts).overlayState).toBe('broken');
     expect(facts.repairTargets).toEqual([]);
   });
+  it('reads facts from a retained (structured-cloned) location whose stats lost their methods', async () => {
+    const fixture = npmDiscoveryFixture(9);
+    fixture.location.tool.identities = [
+      {
+        path: fixture.location.tool.packageDir,
+        stat: await fixture.fs.lstat(fixture.location.tool.packageDir),
+      },
+      {
+        path: fixture.location.tool.file,
+        stat: await fixture.fs.lstat(fixture.location.tool.file),
+      },
+    ];
+    // Preview records snapshot stats as plain data: methods are dropped.
+    fixture.location.tool = JSON.parse(
+      JSON.stringify(fixture.location.tool),
+    ) as typeof fixture.location.tool;
+    const facts = await read(fixture);
+    expect(summarizeNpmVersion(facts).overlayState).toBe('present');
+    const [dir, file] = facts.bundledIdentities.map(({ file }) => file.stat);
+    expect([dir.isDirectory?.(), dir.isFile()]).toEqual([true, false]);
+    expect([file.isDirectory?.(), file.isFile()]).toEqual([false, true]);
+  });
   it('retains the existing refusal for an uninitialized prefix root', async () => {
     const fixture = npmDiscoveryFixture();
     fixture.remove(fixture.location.globalRoot);

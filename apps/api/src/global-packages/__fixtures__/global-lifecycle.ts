@@ -277,6 +277,8 @@ export function testRuntime(): ITestGlobalRuntime {
   const clock = testClock();
   const child = testProcess();
   const fs = memoryFs();
+  fs.put(TEST_PATHS.prefix, { directory: true });
+  fs.put(win32.join(TEST_PATHS.prefix, 'node_modules'), { directory: true });
   fs.put(TEST_PATHS.userconfig, { text: '' });
   fs.put(TEST_PATHS.globalconfig, { text: '' });
   const token = Symbol('TEST mutation');
@@ -302,7 +304,15 @@ export function testRuntime(): ITestGlobalRuntime {
   );
   const scannedProjectPaths = jest.fn(() => [] as readonly string[]);
   const runtime: IGlobalServiceRuntime = {
-    fs: fs.fs,
+    fs: Object.assign(fs.fs, {
+      rm: jest
+        .fn<
+          Promise<void>,
+          [string, { recursive: true; force: false; maxRetries: 0 }]
+        >()
+        .mockResolvedValue(undefined),
+    }),
+    nodeVersion: '24.19.0',
     environment: {},
     platform: 'win32',
     execPath: TEST_PATHS.node,
