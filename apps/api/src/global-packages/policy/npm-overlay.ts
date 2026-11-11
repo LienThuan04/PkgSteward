@@ -34,11 +34,8 @@ const refuse = (reason: GlobalReasonCode): never => {
 const exact = (version: string): semver.SemVer | null => {
   if (typeof version !== 'string') return null;
   const parsed = semver.parse(version);
-  if (!parsed) return null;
-  return version ===
-    parsed.version + (parsed.build.length ? `+${parsed.build.join('.')}` : '')
-    ? parsed
-    : null;
+  // npm releases never carry build metadata; a "+build" target is not a supported release.
+  return parsed && version === parsed.version ? parsed : null;
 };
 const npmBins = (bins: readonly IGlobalBin[]): boolean =>
   bins.length === 2 &&
@@ -96,12 +93,17 @@ export function npmRetirePath(path: string): string {
     .slice(0, 8);
   return win32.resolve(win32.dirname(path), `.${win32.basename(path)}-${hash}`);
 }
+/**
+ * Exact renamed paths arborist may leave for `relative` under the prefix. npm hashes the
+ * prefix string it was given (case-sensitive), but the rename happens in the real folder,
+ * so every hash input's basename is placed under `prefixReal`.
+ */
 export function npmRetireCandidates(
   prefixResolved: string,
   prefixReal: string,
   relative: string,
 ): string[] {
-  const paths = [prefixResolved, prefixReal].flatMap((prefix) => {
+  const inputs = [prefixResolved, prefixReal].flatMap((prefix) => {
     const path = win32.resolve(prefix, relative);
     return /^[a-z]:/i.test(path)
       ? [
@@ -110,8 +112,18 @@ export function npmRetireCandidates(
         ]
       : [path];
   });
-  return [...new Set(paths.map(npmRetirePath))];
+  const folder = win32.dirname(win32.resolve(prefixReal, relative));
+  return [
+    ...new Set(
+      inputs.map((input) =>
+        win32.join(folder, win32.basename(npmRetirePath(input))),
+      ),
+    ),
+  ];
 }
+// Folder compared case-insensitively (NTFS), retired basename exactly (its hash is case-sensitive).
+const retiredKey = (path: string): string =>
+  `${key(win32.dirname(path))}\\${win32.basename(path)}`;
 
 export function proveNpmShim(
   name: string,
@@ -219,6 +231,17 @@ export function classifyNpmOverlay(
     )
   )
     return result('unsupported', 'NPM_PREFIX_IS_NODE_DIR');
+  // Paths an install would write: protected trees refuse every action, even with no overlay yet.
+  const written = [
+    win32.join(facts.prefixReal, 'node_modules', 'npm'),
+    ...NPM_SHIM_NAMES.map((name) => win32.join(facts.prefixReal, name)),
+  ];
+  if (
+    written.some((path) =>
+      facts.protectedPaths.some((root) => overlaps(path, root)),
+    )
+  )
+    return result('unsupported', 'PROTECTED_PACKAGE');
   if (facts.overlay?.directory.reparse)
     return result('linked', 'LINKED_PACKAGE');
   if (!completeShims(facts.shims)) return result('broken', 'BIN_CONFLICT');
@@ -238,7 +261,7 @@ export function classifyNpmOverlay(
       relative,
     ))
       candidates.set(
-        key(path),
+        retiredKey(path),
         relative === 'node_modules\\npm' ? 'directory' : 'file',
       );
   const targets: INpmPathFacts[] = [];
@@ -269,7 +292,7 @@ export function classifyNpmOverlay(
     targets.push(entry);
   }
   for (const entry of facts.retired) {
-    const type = candidates.get(key(entry.path));
+    const type = candidates.get(retiredKey(entry.path));
     if (!type) return result('broken', 'BIN_CONFLICT');
     const failure = safeEntry(entry, type);
     // Retired shim contents may be truncated by npm's interrupted rename/copy.
@@ -308,8 +331,12 @@ export function npmTerminalVersion(
   state = classifyNpmOverlay(facts).state,
 ): string | null {
   if (state === 'absent') return facts.bundledVersion;
-  const version = facts.overlay?.package?.version;
-  return version && exact(version) ? version : null;
+  const manifest = facts.overlay?.package;
+  return (state === 'present' || state === 'broken') &&
+    manifest?.name === 'npm' &&
+    exact(manifest.version)
+    ? manifest.version
+    : null;
 }
 export function assertNpmOverlayMutable(
   action: GlobalAction,

@@ -44,6 +44,28 @@ const preview = (
   );
 
 describe('npm-self previews and retained facts', () => {
+  it('refuses npm-self requests without npm facts and generic facts without a package (G1-2)', () => {
+    const changed = expect.objectContaining({
+      details: { reason: 'PREVIEW_CHANGED' },
+    }) as Error;
+    for (const action of ['change', 'remove', 'repair'] as const) {
+      const input = {
+        ...facts(),
+        npm: undefined,
+        current: { ...testFacts().current, name: 'npm' },
+      };
+      expect(() => preview(input, action)).toThrow(changed);
+    }
+    const generic = { ...testFacts(), current: null };
+    expect(() =>
+      createGlobalPreview(
+        TEST_PREVIEW_ID,
+        testRequest(),
+        generic,
+        testClock().now(),
+      ),
+    ).toThrow(changed);
+  });
   it('previews an absent overlay with bundled terminal current and shared confirmation', () => {
     const input = facts();
     const result = preview(input);

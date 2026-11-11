@@ -6,6 +6,7 @@ import {
   npmRetireCandidates,
   npmRetirePath,
   npmSelfWarnings,
+  npmTerminalVersion,
   proveNodeDirShim,
   proveNpmShim,
 } from './npm-overlay';
@@ -41,6 +42,7 @@ describe('npm-self target policy', () => {
     { version: '13.0.0' },
     { version: '12.0.0-beta.1' },
     { version: 'v12.2.2' },
+    { version: '12.2.2+build.1' },
     { deprecated: true },
     { name: 'pnpm' },
     { bins: [{ name: 'npm', target: 'bin/npm-cli.js' }] },
@@ -122,6 +124,34 @@ describe('strict inert shim proof', () => {
       });
     }
   }
+  it('rejects line-ending, BOM, case, separator and npm/npx swaps (G1-7)', () => {
+    const target = 'node_modules/npm/bin/npm-cli.js';
+    const cmd = npm12Shims(target)['.cmd'];
+    expect(proveNpmShim('npm.cmd', cmd)).toBe('proven');
+    expect(proveNpmShim('npm.cmd', cmd.replace(/\r\n/g, '\n'))).toBe('foreign');
+    expect(proveNpmShim('npm.cmd', '﻿' + cmd)).toBe('foreign');
+    expect(
+      proveNpmShim(
+        'npm.cmd',
+        cmd.replace('node_modules\\npm', 'node_modules\\NPM'),
+      ),
+    ).toBe('foreign');
+    expect(
+      proveNpmShim(
+        'npm.cmd',
+        cmd.replace('node_modules\\npm\\bin\\npm-cli.js', target),
+      ),
+    ).toBe('foreign');
+    const sh = npm12Shims(target)[''];
+    expect(proveNpmShim('npm', sh.replace(/\n/g, '\r\n'))).toBe('foreign');
+    expect(proveNpmShim('npx', sh)).toBe('foreign');
+    expect(proveNodeDirShim('npm.cmd', NODE24_NODE_DIR_SHIMS['npx.cmd'])).toBe(
+      'unverified',
+    );
+    expect(proveNodeDirShim('npx', NODE24_NODE_DIR_SHIMS.npm)).toBe(
+      'unverified',
+    );
+  });
   it('does not prove unknown shim names', () => {
     expect(proveNpmShim('pnpm', '')).toBe('foreign');
     expect(proveNodeDirShim('pnpm', '')).toBe('unverified');
@@ -160,7 +190,8 @@ describe('overlay state and exact repair targets', () => {
     const facts = npmPresent();
     facts.shims[0].entry = null;
     facts.protectedPaths = ['D:\\TEST\\prefix\\node_modules\\npm\\protected'];
-    reason(() => assertNpmOverlayMutable('repair', facts), 'BIN_CONFLICT');
+    // Protected trees are refused before any target is considered (G1-3).
+    reason(() => assertNpmOverlayMutable('repair', facts), 'PROTECTED_PACKAGE');
   });
   it('requires a complete observation of S even when every supplied entry is absent', () => {
     const facts = npmSelfFacts();
@@ -274,6 +305,42 @@ describe('overlay state and exact repair targets', () => {
     facts.shims[0].entry = null;
     expect(() => assertNpmOverlayMutable('repair', facts)).not.toThrow();
   });
+  it('matches the retired hash case-sensitively but its folder case-insensitively (G1-1)', () => {
+    const facts = npmSelfFacts();
+    const exact = npmRetirePath('D:\\TEST\\prefix\\node_modules\\npm');
+    facts.retired = [
+      npmEntry(exact.replace('D:\\TEST', 'd:\\test'), 'directory'),
+    ];
+    expect(classifyNpmOverlay(facts).state).toBe('broken');
+    expect(() => assertNpmOverlayMutable('repair', facts)).not.toThrow();
+    const wrongCase = exact.slice(0, -8) + exact.slice(-8).toUpperCase();
+    expect(wrongCase).not.toBe(exact);
+    facts.retired = [npmEntry(wrongCase, 'directory')];
+    reason(() => assertNpmOverlayMutable('repair', facts), 'BIN_CONFLICT');
+  });
+  it.each([
+    'D:\\TEST\\prefix',
+    'D:\\TEST\\prefix\\node_modules\\npm',
+    'D:\\TEST\\prefix\\npm.cmd',
+  ])(
+    'refuses installing into protected %s without an overlay (G1-3)',
+    (path) => {
+      const facts = npmSelfFacts();
+      facts.protectedPaths = [path];
+      reason(
+        () => assertNpmOverlayMutable('change', facts),
+        'PROTECTED_PACKAGE',
+      );
+    },
+  );
+  it('reports no terminal version for a foreign or linked overlay (G1-4)', () => {
+    const facts = npmPresent();
+    facts.overlay!.package = { ...facts.overlay!.package!, name: 'other' };
+    expect(npmTerminalVersion(facts)).toBeNull();
+    const linked = npmPresent();
+    linked.overlay!.directory.reparse = true;
+    expect(npmTerminalVersion(linked)).toBeNull();
+  });
   it('refuses arbitrary retired paths and mismatched realpaths', () => {
     const facts = npmSelfFacts();
     facts.retired = [
@@ -298,11 +365,12 @@ describe('npm retire algorithm and terminal warnings', () => {
       'D:\\RealPrefix',
       'node_modules\\npm',
     );
+    // npm hashes the prefix string it was given; the renamed entry lives in the real folder (G1-1).
     expect(candidates).toEqual([
-      'D:\\TEST\\prefix\\node_modules\\.npm-p9Z75ZzS',
-      'd:\\TEST\\prefix\\node_modules\\.npm-lzMu51qr',
+      'D:\\RealPrefix\\node_modules\\.npm-p9Z75ZzS',
+      'D:\\RealPrefix\\node_modules\\.npm-lzMu51qr',
       'D:\\RealPrefix\\node_modules\\.npm-7PoMxzRi',
-      'd:\\RealPrefix\\node_modules\\.npm-PV35f8DF',
+      'D:\\RealPrefix\\node_modules\\.npm-PV35f8DF',
     ]);
     expect(
       npmRetireCandidates('D:\\TEST\\prefix', 'D:\\TEST\\prefix', 'npm.cmd'),

@@ -412,7 +412,9 @@ export function createGlobalPreview(
   const { current, target, location } = facts;
   assertGlobalRepairAction(request.manager, request.action, request.package);
   const npm = facts.npm;
-  if (npm && (request.manager !== 'npm' || request.package !== 'npm'))
+  // npm itself must always carry npm facts, and only npm itself may (G1-2).
+  const npmSelf = request.manager === 'npm' && request.package === 'npm';
+  if (Boolean(npm) !== npmSelf || (!npm && !current))
     return refuse('PREVIEW_CHANGED');
   const packageName = npm ? 'npm' : current?.name;
   if (
