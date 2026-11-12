@@ -54,7 +54,7 @@ export function assertNpmTarget(
   if (
     target.name !== 'npm' ||
     !parsed ||
-    ![11, 12].includes(parsed.major) ||
+    ![10, 11, 12].includes(parsed.major) ||
     parsed.prerelease.length ||
     target.deprecated !== false ||
     !npmBins(target.bins)

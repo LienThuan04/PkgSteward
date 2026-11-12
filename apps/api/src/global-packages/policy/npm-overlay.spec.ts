@@ -32,13 +32,17 @@ const reason = (run: () => unknown, expected: string) => {
 };
 
 describe('npm-self target policy', () => {
-  it.each(['11.21.2', '12.2.2'])('accepts supported exact %s', (version) => {
-    expect(() =>
-      assertNpmTarget(npmTarget({ version }), '24.19.0', '11.17.0'),
-    ).not.toThrow();
-  });
+  it.each(['10.9.4', '11.21.2', '12.2.2'])(
+    'accepts supported exact %s',
+    (version) => {
+      expect(() =>
+        assertNpmTarget(npmTarget({ version }), '24.19.0', '11.17.0'),
+      ).not.toThrow();
+    },
+  );
   it.each<Partial<IGlobalTargetFacts>>([
-    { version: '10.9.10' },
+    { version: '9.9.4' },
+    { version: '10.0.0-pre.1' },
     { version: '13.0.0' },
     { version: '12.0.0-beta.1' },
     { version: 'v12.2.2' },
@@ -56,6 +60,13 @@ describe('npm-self target policy', () => {
     reason(
       () => assertNpmTarget(npmTarget(patch), '24.19.0', '11.17.0'),
       'TARGET_VERSION_UNSUPPORTED',
+    );
+  });
+  it('refuses the npm 10 already used by terminals on Node 22 (U-85)', () => {
+    reason(
+      () =>
+        assertNpmTarget(npmTarget({ version: '10.9.9' }), '22.23.5', '10.9.9'),
+      'NO_VERSION_CHANGE',
     );
   });
   it.each([null, '', '   ', 'not a range', '>=26'])(

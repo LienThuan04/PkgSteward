@@ -267,7 +267,7 @@ describe('npm-self service integration (static facts, mocked IO)', () => {
         });
       if (variant === 'engine') f.runtime.nodeVersion = '24.0.0';
       if (variant === 'target')
-        f.target.mockResolvedValue(npmTarget({ version: '10.9.10' }));
+        f.target.mockResolvedValue(npmTarget({ version: '9.9.4' }));
       const start = await f.service.preview(f.request('change'));
       expect(await finishPnpmJob(f.service, start.jobId)).toMatchObject({
         status: 'failed',
