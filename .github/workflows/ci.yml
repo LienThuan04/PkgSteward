@@ -85,10 +85,6 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      # Keep LF endings so `pnpm lint --fix` has nothing to rewrite.
-      - run: git config --global core.autocrlf false
-        working-directory: .
-
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
@@ -125,9 +121,6 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - run: git config --global core.autocrlf false
-        working-directory: .
-
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
@@ -147,7 +140,8 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # How users install PkgSteward: pnpm 10 per app, or npm from the repository root.
+  # Install paths: pnpm 10 per app with the tracked lockfiles (the root lockfile is git-ignored, and pnpm
+  # freezes lockfiles in CI), and npm at the repository root (postinstall installs both apps).
   install-compat:
     name: Install with ${{ matrix.tool }} on Windows, Node 22
     runs-on: windows-latest
@@ -157,8 +151,6 @@ jobs:
       matrix:
         tool: ['pnpm 10', 'npm']
     steps:
-      - run: git config --global core.autocrlf false
-
       - uses: actions/checkout@v7
 
       - if: matrix.tool == 'pnpm 10'
@@ -170,7 +162,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install and build with pnpm 10
+      - name: Install and build each app with pnpm 10
         if: matrix.tool == 'pnpm 10'
         shell: bash
         run: |
