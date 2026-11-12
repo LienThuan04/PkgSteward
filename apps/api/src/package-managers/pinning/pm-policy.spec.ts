@@ -102,6 +102,9 @@ describe('current declaration parsing', () => {
 
 describe('public target policy', () => {
   it.each([
+    ['npm', '10.9.9', '10.9.4', null],
+    ['npm', '11.17.0', '10.9.9', 'TARGET_VERSION_UNSUPPORTED'],
+    ['npm', '10.9.9', '11.21.2', 'TARGET_VERSION_UNSUPPORTED'],
     ['npm', '11.17.0', '11.21.2', null],
     ['npm', '12.2.2', '12.2.1', null],
     ['npm', '11.17.0', '12.2.2', 'TARGET_VERSION_UNSUPPORTED'],
@@ -116,7 +119,7 @@ describe('public target policy', () => {
     },
   );
   it.each([
-    '10.9.0',
+    '9.9.4',
     '13.0.0',
     '12.2.2-beta.1',
     'v12.2.2',
@@ -161,7 +164,7 @@ describe('public target policy', () => {
     expect(getPmTargetReason('npm', null, '11.20.0', false)).toBe(
       'TOOL_NOT_FOUND',
     );
-    expect(getPmTargetReason('npm', '10.9.0', '11.20.0', false)).toBe(
+    expect(getPmTargetReason('npm', '9.9.4', '11.20.0', false)).toBe(
       'TOOL_VERSION_MISMATCH',
     );
     for (const version of ['10.9.0', '12.0.0', '11.23.0-beta.1', 'v11.20.0'])
@@ -298,7 +301,7 @@ describe('project pin eligibility', () => {
     expect(
       assessPmPinChange({
         ...oldPin,
-        installed: { ...tool, version: '10.9.0' },
+        installed: { ...tool, version: '9.9.4' },
       }).eligible,
     ).toBe(false);
     expect(

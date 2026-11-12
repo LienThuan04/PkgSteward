@@ -13,16 +13,17 @@ const inventory = (overrides = {}, npm = npmVersion()) => ({
   binDir: "C:\\TEST\\npm", packages: [], npmVersion: npm, ...overrides,
 })
 
-test("version options keep only stable, non-deprecated npm 11 and 12, newest first, current disabled", () => {
-  const list = ["10.9.10", "11.0.0", "11.21.2", "12.0.0-pre.1", "12.2.2", "11.17.0", "13.0.0", "12.1.0", "11.20.0+build.1"]
+test("version options keep only stable, non-deprecated npm 10, 11 and 12, newest first, current disabled", () => {
+  const list = ["10.9.10", "9.9.4", "10.0.0-pre.1", "11.0.0", "11.21.2", "12.0.0-pre.1", "12.2.2", "11.17.0", "13.0.0", "12.1.0", "11.20.0+build.1"]
   const options = npmVersionOptions(versions(list, ["12.1.0"]), "11.17.0")
   assert.deepEqual(options, [
     { version: "12.2.2", current: false },
     { version: "11.21.2", current: false },
     { version: "11.17.0", current: true },
     { version: "11.0.0", current: false },
+    { version: "10.9.10", current: false },
   ])
-  assert.deepEqual(list.slice(0, 2), ["10.9.10", "11.0.0"], "registry data is not mutated")
+  assert.deepEqual(list.slice(0, 2), ["10.9.10", "9.9.4"], "registry data is not mutated")
 })
 
 test("version options are empty without registry data and tolerate a missing deprecated list", () => {

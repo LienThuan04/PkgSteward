@@ -5,10 +5,13 @@ import {
 
 describe('runner version policy', () => {
   it('exports the finite supported majors', () => {
-    expect(SUPPORTED_RUNNER_MAJORS).toEqual({ npm: [11, 12], pnpm: [11] });
+    expect(SUPPORTED_RUNNER_MAJORS).toEqual({ npm: [10, 11, 12], pnpm: [11] });
   });
 
   it.each([
+    ['npm', '10.0.0'],
+    ['npm', '10.9.9'],
+    ['npm', '10.9.4+TEST'],
     ['npm', '11.17.0'],
     ['npm', '12.0.0'],
     ['npm', '12.2.2'],
@@ -25,7 +28,8 @@ describe('runner version policy', () => {
   );
 
   it.each([
-    ['npm', '10.9.0'],
+    ['npm', '9.9.4'],
+    ['npm', '10.0.0-pre.1'],
     ['npm', '13.0.0'],
     ['pnpm', '12.0.0'],
     ['yarn', '11.17.0'],

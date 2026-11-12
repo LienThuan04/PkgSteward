@@ -293,7 +293,7 @@ describe('runner command grammar and fixed argv', () => {
     const context = runnerInput();
     context.tool = null;
     expect(() => buildRunCommand(context, request('install_all'))).toThrow();
-    context.tool = { ...tool(), version: '10.0.0' };
+    context.tool = { ...tool(), version: '9.9.4' };
     expect(() => buildRunCommand(context, request('install_all'))).toThrow();
   });
   it.each([

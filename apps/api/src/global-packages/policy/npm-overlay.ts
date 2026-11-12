@@ -18,6 +18,7 @@ import type {
 } from '../interfaces/global-packages.types';
 import {
   NODE24_NODE_DIR_SHIMS,
+  NODE_DIR_SHIM_SETS,
   CMD_SHIM8_PNPM_SHIMS,
   CMD_SHIM8_PNPM_TARGET,
   npm12Shims,
@@ -54,7 +55,7 @@ export function assertNpmTarget(
   if (
     target.name !== 'npm' ||
     !parsed ||
-    ![11, 12].includes(parsed.major) ||
+    ![10, 11, 12].includes(parsed.major) ||
     parsed.prerelease.length ||
     target.deprecated !== false ||
     !npmBins(target.bins)
@@ -150,9 +151,9 @@ export function proveNpmShim(
 export function proveNodeDirShim(
   name: string,
   text: string,
+  shims: Readonly<Record<string, string>> = NODE24_NODE_DIR_SHIMS,
 ): 'verified' | 'unverified' {
-  return Object.hasOwn(NODE24_NODE_DIR_SHIMS, name) &&
-    NODE24_NODE_DIR_SHIMS[name] === text
+  return Object.hasOwn(shims, name) && shims[name] === text
     ? 'verified'
     : 'unverified';
 }
@@ -198,12 +199,15 @@ export function npmDelegation(facts: INpmSelfFacts): 'verified' | 'unverified' {
     key(facts.prefixScript.file.path) ===
       key(win32.join(facts.packageDir, 'bin', 'npm-prefix.js')) &&
     completeShims(facts.nodeDirShims) &&
-    facts.nodeDirShims.every(
-      ({ name, entry }) =>
-        entry !== null &&
-        key(entry.path) === key(win32.join(facts.nodeDir, name)) &&
-        safeEntry(entry, 'file') === null &&
-        proveNodeDirShim(name, entry.text!) === 'verified',
+    // All six shims must come from one known Node build; mixing sets is refused.
+    NODE_DIR_SHIM_SETS.some((shims) =>
+      facts.nodeDirShims.every(
+        ({ name, entry }) =>
+          entry !== null &&
+          key(entry.path) === key(win32.join(facts.nodeDir, name)) &&
+          safeEntry(entry, 'file') === null &&
+          proveNodeDirShim(name, entry.text!, shims) === 'verified',
+      ),
     )
     ? 'verified'
     : 'unverified';
