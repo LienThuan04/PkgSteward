@@ -16,8 +16,8 @@ export interface NpmVersionCardModel {
   canRepair: boolean
 }
 
-// Chỉ npm 11/12 bản ổn định (U-81). Backend vẫn kiểm tra lại engines/deprecated khi preview.
-const SUPPORTED_TARGET = /^(?:11|12)\.\d+\.\d+$/
+// Chỉ npm 10/11/12 bản ổn định (U-81, U-85). Backend vẫn kiểm tra lại engines/deprecated khi preview.
+const SUPPORTED_TARGET = /^(?:10|11|12)\.\d+\.\d+$/
 const STATES: readonly NpmOverlayState[] = ["absent", "present", "broken", "linked", "unsupported"]
 
 export function npmVersionOptions(versions: GlobalVersions | null, current: string | null): NpmVersionOption[] {
