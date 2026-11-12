@@ -128,6 +128,30 @@ describe('npm-self previews and retained facts', () => {
       ),
     ).toThrow();
   });
+  it('warns repair only about the terminal switch and unknown consumers (U-91)', () => {
+    const input = facts();
+    input.target = null;
+    input.npm!.shims[0].entry = npmEntry('D:\\TEST\\prefix\\npm');
+    // Repair deletes in-process: no package code runs and no child is spawned.
+    expect(preview(input, 'repair').warningCodes).toEqual([
+      'TERMINAL_NPM_SWITCH',
+      'GLOBAL_CONSUMERS_UNKNOWN',
+    ]);
+    const present = facts();
+    present.npm = npmPresent('11.21.2');
+    present.current = present.npm.overlay!.package;
+    const change = preview(present);
+    present.target = null;
+    for (const result of [change, preview(present, 'remove')])
+      expect(result.warningCodes).toEqual(
+        expect.arrayContaining([
+          'TERMINAL_NPM_SWITCH',
+          'GLOBAL_CODE_EXECUTION',
+          'GLOBAL_CONSUMERS_UNKNOWN',
+          'PROCESS_ESCAPE_RESIDUAL',
+        ]),
+      );
+  });
   it('snapshots method-bearing file identities without sharing caller objects', () => {
     const input = facts();
     const store = new GlobalPreviewStore(testClock());
