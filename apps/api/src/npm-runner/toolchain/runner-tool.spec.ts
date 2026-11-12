@@ -371,7 +371,7 @@ describe('installed runner tool resolver (static data only)', () => {
       expect(result.file).not.toMatch(/\.(?:cmd|bat|ps1|mjs|js)$/i);
     },
   );
-  it.each(['11.17.0', '12.2.2'])(
+  it.each(['10.9.9', '11.17.0', '12.2.2'])(
     'ignores hostile cwd shims, Node binaries, shebangs and PATH .bin for npm %s',
     async (version) => {
       const f = setup();
@@ -538,7 +538,7 @@ describe('installed runner tool resolver (static data only)', () => {
     f.installTool('npm');
     f.put(
       path.join(npmDir, 'package.json'),
-      '{"name":"npm","version":"10.0.0","bin":{"npm":"bin/npm-cli.js"}}',
+      '{"name":"npm","version":"9.9.4","bin":{"npm":"bin/npm-cli.js"}}',
     );
     await expect(f.resolve()).rejects.toMatchObject({
       details: { reason: 'TOOL_VERSION_MISMATCH' },
@@ -565,7 +565,7 @@ describe('installed runner tool resolver (static data only)', () => {
     });
     expect(f.events).not.toContain(`read:${key(installed.entry!)}`);
   });
-  it.each(['11.17.0', '12.2.2'])(
+  it.each(['10.9.9', '11.17.0', '12.2.2'])(
     'refuses npm %s bin symlinks or realpaths escaping its distribution outside scanned roots',
     async (version) => {
       const f = setup();

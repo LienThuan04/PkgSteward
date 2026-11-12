@@ -1,7 +1,7 @@
 import * as semver from 'semver';
 
 export const SUPPORTED_RUNNER_MAJORS = {
-  npm: [11, 12],
+  npm: [10, 11, 12],
   pnpm: [11],
 } as const;
 
@@ -18,6 +18,7 @@ export function isSupportedRunnerVersion(
   if (canonical !== version) return false;
   return (
     SUPPORTED_RUNNER_MAJORS[manager].some((major) => major === parsed.major) &&
-    !(manager === 'npm' && parsed.major === 12 && parsed.prerelease.length > 0)
+    // Prereleases stay accepted only for major 11 (existing behavior); newer majors are stable-only.
+    !(parsed.prerelease.length > 0 && parsed.major !== 11)
   );
 }

@@ -139,7 +139,7 @@ describe('format-preserving project pin plan', () => {
   });
   it.each([
     'latest',
-    'npm@10.9.0',
+    'npm@9.9.4',
     'npm@13.0.0',
     'pnpm@12.18.0',
     'npm@12.2.2-beta.1',

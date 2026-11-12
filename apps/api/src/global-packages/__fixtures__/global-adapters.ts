@@ -12,7 +12,7 @@ import type {
 } from '@/npm-runner/interfaces/npm-runner.types';
 
 // TEST không phải yêu cầu nghiệp vụ. All paths and bytes are inert in-memory data.
-export const TEST_NPM_VERSIONS = ['11.17.0', '12.2.2'] as const;
+export const TEST_NPM_VERSIONS = ['10.9.9', '11.17.0', '12.2.2'] as const;
 
 export const TEST_PATHS = {
   node: 'C:\\Program Files\\nodejs\\node.exe',

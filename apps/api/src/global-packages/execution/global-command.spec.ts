@@ -362,7 +362,7 @@ describe.each(TEST_NPM_VERSIONS)('global argv (npm %s; RT pending)', (v) => {
 });
 
 describe('global npm version gate', () => {
-  it.each(['10.9.0', '13.0.0', '12.0.0-pre.1', 'v12.2.2', 'invalid'])(
+  it.each(['9.9.4', '13.0.0', '12.0.0-pre.1', 'v12.2.2', 'invalid'])(
     'rejects %s in queries and both mutations',
     async (version) => {
       const location = testLocation('npm', version);
