@@ -8,7 +8,13 @@ import { nodeRuntimeNotice } from "./node-runtime.mjs"
 // Cảnh báo trước khi nạp file .ts: Node dưới 22.18 không tự bỏ kiểu TypeScript nên sẽ lỗi ngay sau đó.
 const notice = nodeRuntimeNotice(process.versions.node)
 if (notice) console.warn(`[PkgSteward] ${notice}`)
-const { resolveServerAddress } = await import("../lib/config/server-address.ts")
+let resolveServerAddress
+try {
+  ;({ resolveServerAddress } = await import("../lib/config/server-address.ts"))
+} catch (error) {
+  console.error(error.message)
+  process.exit(1)
+}
 
 const frontendDirectory = fileURLToPath(new URL("../", import.meta.url))
 
