@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { parseEnv } from "node:util"
-import { resolveServerAddress } from "../lib/config/server-address.ts"
+import { nodeRuntimeNotice } from "./node-runtime.mjs"
+
+// Cảnh báo trước khi nạp file .ts: Node dưới 22.18 không tự bỏ kiểu TypeScript nên sẽ lỗi ngay sau đó.
+const notice = nodeRuntimeNotice(process.versions.node)
+if (notice) console.warn(`[PkgSteward] ${notice}`)
+const { resolveServerAddress } = await import("../lib/config/server-address.ts")
 
 const frontendDirectory = fileURLToPath(new URL("../", import.meta.url))
 
