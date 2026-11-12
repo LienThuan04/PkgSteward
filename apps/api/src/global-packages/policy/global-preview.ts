@@ -471,12 +471,17 @@ export function createGlobalPreview(
           : [];
       }),
     },
-    warningCodes: [
-      ...warnings,
-      'GLOBAL_CODE_EXECUTION',
-      'GLOBAL_CONSUMERS_UNKNOWN',
-      'PROCESS_ESCAPE_RESIDUAL',
-    ],
+    // Repair xoá ngay trong process (không chạy code của gói, không spawn tiến trình con) nên
+    // không có cảnh báo script vòng đời / tiến trình thoát cây (U-91).
+    warningCodes:
+      request.action === 'repair'
+        ? [...warnings, 'GLOBAL_CONSUMERS_UNKNOWN']
+        : [
+            ...warnings,
+            'GLOBAL_CODE_EXECUTION',
+            'GLOBAL_CONSUMERS_UNKNOWN',
+            'PROCESS_ESCAPE_RESIDUAL',
+          ],
     risk: getGlobalRisk(),
     confirmText: globalConfirmText(
       request.manager,
