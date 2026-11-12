@@ -71,3 +71,139 @@ jobs:
       - run: pnpm i18n:check
       - run: pnpm test
       - run: pnpm build
+
+  # Windows is the target platform; Node 22 is the oldest supported major.
+  backend-windows:
+    name: Backend on Windows, Node ${{ matrix.node }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: apps/api/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        shell: bash
+        run: |
+          pnpm lint
+          git diff --exit-code
+
+      - run: pnpm build
+
+      # Jest loads the ESM-only NestJS packages through require(esm) only on Node 24.9+,
+      # so Node 22 checks the built app instead of the test suites.
+      - if: matrix.node == '24'
+        run: pnpm test
+      - if: matrix.node == '24'
+        run: pnpm test:e2e
+
+      - name: Start the built backend on Node 22
+        if: matrix.node == '22'
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'pkgsteward-data'
+          $scan = Join-Path $env:RUNNER_TEMP 'pkgsteward-scan'
+          New-Item -ItemType Directory -Force $data, $scan | Out-Null
+          $env:PKGSTEWARD_DATA_DIR = $data
+          $env:SCAN_ROOT_PATHS = $scan
+          $env:HOST = '127.0.0.1'
+          $log = Join-Path $env:RUNNER_TEMP 'backend.log'
+          $p = Start-Process node -ArgumentList 'dist/main.js' -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -NoNewWindow
+          $status = 0
+          for ($i = 0; $i -lt 60 -and $status -ne 200; $i++) {
+            Start-Sleep -Seconds 1
+            try { $status = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 'http://127.0.0.1:24681/api/v1/global-packages').StatusCode } catch { }
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Get-Content $log, "$log.err" -ErrorAction SilentlyContinue
+          if ($status -ne 200) { throw "The backend did not answer on Node $(node -v) (status $status)" }
+          if (Select-String -Path "$log.err" -Pattern '\[PkgSteward\]' -Quiet) { throw 'Unexpected Node version warning' }
+
+  frontend-windows:
+    name: Frontend on Windows, Node ${{ matrix.node }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm theme:check
+      - run: pnpm i18n:check
+      - run: pnpm test
+      - run: pnpm build
+
+  # Install paths: pnpm 10 per app with the tracked lockfiles (the root lockfile is git-ignored, and pnpm
+  # freezes lockfiles in CI), and npm at the repository root (postinstall installs both apps).
+  install-compat:
+    name: Install with ${{ matrix.tool }} on Windows, Node 22
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ['pnpm 10', 'npm']
+    steps:
+      - uses: actions/checkout@v7
+
+      - if: matrix.tool == 'pnpm 10'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install and build each app with pnpm 10
+        if: matrix.tool == 'pnpm 10'
+        shell: bash
+        run: |
+          pnpm --version
+          for app in apps/api apps/web; do
+            (cd "$app" && pnpm install --frozen-lockfile && pnpm build)
+          done
+
+      - name: Install from the root and build with npm
+        if: matrix.tool == 'npm'
+        shell: bash
+        run: |
+          npm --version
+          npm install
+          for app in apps/api apps/web; do
+            (cd "$app" && npm run build)
+          done
