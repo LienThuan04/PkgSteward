@@ -52,7 +52,10 @@ describe('Scanner HTTP flow and cache (e2e)', () => {
   );
 
   beforeEach(async () => {
-    base = await mkdtemp(join(tmpdir(), 'pkgsteward-scanner-e2e-'));
+    // Scanner reports canonical paths; the temp dir may be an 8.3 short name (Windows CI runners).
+    base = await realpath(
+      await mkdtemp(join(tmpdir(), 'pkgsteward-scanner-e2e-')),
+    );
     root = join(base, 'scan');
     dataDir = join(base, 'data');
     installDir = join(base, 'install');
