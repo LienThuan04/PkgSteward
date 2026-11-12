@@ -17,7 +17,7 @@ machine. NestJS 12 + TypeScript.
 
 ## Requirements
 
-Node 24, pnpm 11. Target platform: Windows 11.
+Node 22.18 or newer (tested on Node 22 and 24), pnpm 10 or 11. Target platform: Windows 11.
 
 ## Install
 
