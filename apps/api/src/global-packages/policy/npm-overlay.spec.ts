@@ -3,6 +3,7 @@ import {
   assertNpmOverlayMutable,
   assertNpmTarget,
   classifyNpmOverlay,
+  npmDelegation,
   npmRetireCandidates,
   npmRetirePath,
   npmSelfWarnings,
@@ -12,7 +13,11 @@ import {
 } from './npm-overlay';
 import { npm12Shims } from '../__fixtures__/npm12/shims';
 import { CMD_SHIM8_PNPM_SHIMS } from '../__fixtures__/npm-overlay/cmd-shim8-pnpm-shims';
-import { NODE24_NODE_DIR_SHIMS } from '../__fixtures__/npm-overlay/node-dir-shims';
+import {
+  NPM_10_9_3_PS1_SHIMS,
+  NPM_11_3_PS1_SHIMS,
+  NODE24_NODE_DIR_SHIMS,
+} from '../__fixtures__/npm-overlay/node-dir-shims';
 import {
   npmSelfFacts,
   npmEntry,
@@ -403,5 +408,55 @@ describe('npm retire algorithm and terminal warnings', () => {
       () => npmSelfWarnings('change', '12.2.2', '12.2.2'),
       'NO_VERSION_CHANGE',
     );
+  });
+});
+
+describe('Node-dir shim sets (VC0 F1)', () => {
+  // Shims of one Node build: Node 24 cmd/sh files with the given PowerShell texts.
+  const withPs1 = (ps1: Record<string, string>) => {
+    const facts = npmSelfFacts();
+    facts.nodeDirShims = facts.nodeDirShims.map(({ name }) => ({
+      name,
+      entry: npmEntry(
+        `C:\\Node\\${name}`,
+        'file',
+        ps1[name] ?? NODE24_NODE_DIR_SHIMS[name],
+      ),
+    }));
+    return facts;
+  };
+  it('verifies delegation for the Node 24 set', () => {
+    expect(npmDelegation(withPs1({}))).toBe('verified');
+  });
+  it('verifies delegation for the npm 10.9.0-11.3.0 PowerShell shims (Node 24.0-24.2)', () => {
+    expect(npmDelegation(withPs1(NPM_11_3_PS1_SHIMS))).toBe('verified');
+  });
+  it('verifies delegation for the npm 10.9.3 PowerShell shims (Node 22.18-22.20, 24.3-24.7)', () => {
+    expect(npmDelegation(withPs1(NPM_10_9_3_PS1_SHIMS))).toBe('verified');
+  });
+  it('refuses PowerShell shims taken from two different npm releases', () => {
+    expect(
+      npmDelegation(
+        withPs1({
+          'npm.ps1': NPM_10_9_3_PS1_SHIMS['npm.ps1'],
+          'npx.ps1': NPM_11_3_PS1_SHIMS['npx.ps1'],
+        }),
+      ),
+    ).toBe('unverified');
+  });
+  it('refuses a mix of legacy and Node 24 PowerShell shims', () => {
+    expect(
+      npmDelegation(withPs1({ 'npm.ps1': NPM_11_3_PS1_SHIMS['npm.ps1'] })),
+    ).toBe('unverified');
+  });
+  it('refuses a legacy PowerShell shim changed by one byte', () => {
+    expect(
+      npmDelegation(
+        withPs1({
+          ...NPM_11_3_PS1_SHIMS,
+          'npx.ps1': NPM_11_3_PS1_SHIMS['npx.ps1'].replace('npx', 'npm'),
+        }),
+      ),
+    ).toBe('unverified');
   });
 });
