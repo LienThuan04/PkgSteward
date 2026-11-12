@@ -20,8 +20,8 @@ manager version) safely.
   filesystem at the time of each request.
 - **Safety first:** file deletions and machine-wide changes go through a *preview → confirm* flow; project
   commands (below) start in one click next to a permanent trust notice.
-- **Project commands:** run install/update/uninstall or a declared script from project details with npm 11 or
-  pnpm 11, live logs and Stop; workspace members support scripts only. Run starts in one click without confirmation.
+- **Project commands:** run install/update/uninstall or a declared script from project details with npm 10–12 or
+  pnpm 10–11, live logs and Stop; workspace members support scripts only. Run starts in one click without confirmation.
 
 > [!WARNING]
 > Only run projects you trust. Commands execute project/lifecycle code and configuration (`.npmrc`, pnpmfile,

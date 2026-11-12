@@ -5,6 +5,7 @@ import type {
 } from '@/npm-runner/interfaces/npm-runner.types';
 import { SETTINGS_FILE_KEYS } from '@/config/environment/env.validation';
 import { isFullyQualifiedPath } from '@/common/utils/path.util';
+import * as semver from 'semver';
 
 // Action is explicit because A8 requires CI=1 for mutations only.
 export function buildRunnerEnvironment(
@@ -13,7 +14,6 @@ export function buildRunnerEnvironment(
   manager: RunnerManager,
   action: RunAction,
 ): NodeJS.ProcessEnv {
-  void tool;
   const denied = new Set([
     ...SETTINGS_FILE_KEYS,
     'PKGSTEWARD_DATA_DIR',
@@ -61,6 +61,14 @@ export function buildRunnerEnvironment(
       ? {
           pnpm_config_verify_deps_before_run: 'false',
           pnpm_config_update_notifier: 'false',
+        }
+      : {}),
+    // pnpm 10.34.9 reads env config as npm_config_* (above the project .npmrc) and
+    // applies pnpm_config_verify_deps_before_run only inside a workspace.
+    ...(manager === 'pnpm' && semver.parse(tool.version)?.major === 10
+      ? {
+          npm_config_verify_deps_before_run: 'false',
+          npm_config_update_notifier: 'false',
         }
       : {}),
   };

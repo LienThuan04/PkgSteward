@@ -143,8 +143,9 @@ dependencies are installed. Inspect `allowScripts` yourself: the app does not ap
 or recover missing build artifacts. Arguments and environment are unchanged; the app adds no ignore-scripts,
 allow-scripts or strict-npmrc overrides. Strict npm configuration failures fail the job without an automatic retry.
 
-- **Tools and inputs:** npm 11, npm 12 and pnpm 11; npm 12 prereleases and other majors are refused.
-  Verified with npm 11.17.0, npm 12.2.2, pnpm 11.22.0 and Node 24.19.0.
+- **Tools and inputs:** npm 10, npm 11, npm 12, pnpm 10 and pnpm 11; npm 10, npm 12 and pnpm 10 prereleases and other
+  majors are refused. Verified with npm 11.17.0, npm 12.2.2, pnpm 11.22.0 and Node 24.19.0; pnpm 10 arguments checked
+  against pnpm 10.34.9. Global packages stay npm 10–12 and pnpm 11 only.
   Installed npm 12 needs valid `engines.node` metadata satisfied by the backend's Node: missing/malformed metadata
   returns `TOOL_LAYOUT_UNSUPPORTED`, incompatible/invalid Node returns `TOOL_VERSION_MISMATCH`. With installed
   npm 12, any `npm-shrinkwrap.json` (even alongside `package-lock.json`) refuses every action with
@@ -244,8 +245,9 @@ another tab cannot be resumed; wait for it to finish before starting a new one.
 
 ## Global packages
 
-Open `/global-packages` to manage installed global packages with **npm 11, npm 12 or pnpm 11**. npm 12 prereleases
-and other majors are refused (`TOOL_VERSION_MISMATCH`). Installed npm 12 needs valid `engines.node` metadata
+Open `/global-packages` to manage installed global packages with **npm 10, npm 11, npm 12 or pnpm 11**. npm 10 and
+npm 12 prereleases and other majors are refused (`TOOL_VERSION_MISMATCH`); pnpm 10 global operations are refused
+with the same reason until their layout is supported. Installed npm 12 needs valid `engines.node` metadata
 satisfied by the backend's Node: missing/malformed metadata returns `TOOL_LAYOUT_UNSUPPORTED`, incompatible/invalid
 Node returns `TOOL_VERSION_MISMATCH`. Verified with npm 11.17.0, npm 12.2.2, pnpm 11.22.0 and Node 24.19.0;
 how npm 12 handles install scripts of global packages has not been verified. Yarn is not supported;
@@ -328,7 +330,8 @@ they were read. This is a **project** setting: it changes one field in that proj
 changes the npm/pnpm installed on the machine.
 
 1. Choose `npm` or `pnpm`, then **Load versions**. The list comes from the public npm registry and shows only
-   stable, non-deprecated versions with the same major as the installed tool (npm 11, npm 12 or pnpm 11).
+   stable, non-deprecated versions with the same major as the installed tool
+   (npm 10, npm 11, npm 12, pnpm 10 or pnpm 11).
 2. Pick a version and **Preview change**. Escape stops a preview that is still loading.
 3. The confirmation dialog shows the project, the single `package.json` edit (current value → new value), the
    installed tool PkgSteward keeps using, notes (an old pin hash is dropped; the pin does not switch the tool

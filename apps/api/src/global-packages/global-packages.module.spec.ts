@@ -10,6 +10,7 @@ import {
   GlobalPackagesModule,
 } from '@/global-packages/global-packages.module';
 import type { IGlobalRuntimeBindings } from '@/global-packages/global-packages.module';
+import * as runnerTools from '@/npm-runner/toolchain/runner-tool';
 import { GlobalPackagesService } from '@/global-packages/global-packages.service';
 import { discoverGlobalLocation } from '@/global-packages/discovery/global-location';
 import type { IGlobalProbeOptions } from '@/global-packages/interfaces/global-packages.runtime';
@@ -313,6 +314,40 @@ describe('GlobalPackagesModule runtime bindings', () => {
       expect(b.launchProcess).toHaveBeenCalledTimes(2);
     },
   );
+
+  it('refuses a freshly resolved pnpm 10 before registering it for probes or launch', async () => {
+    const b = bindings();
+    const runtime = createGlobalPackagesRuntime(b.input);
+    const resolve = jest
+      .spyOn(runnerTools, 'resolveRunnerTool')
+      .mockResolvedValue(testTool('pnpm', '10.34.9'));
+    try {
+      await expect(
+        runtime.resolveTool('pnpm', new AbortController().signal),
+      ).rejects.toMatchObject({
+        details: { reason: 'TOOL_VERSION_MISMATCH' },
+      });
+      const tool = testTool('pnpm', '10.34.9');
+      expect(() =>
+        runtime.launch(
+          {
+            file: tool.file,
+            args: [tool.entry!, 'list'],
+            cwd: TEST_PATHS.cwd,
+            env: {},
+          },
+          {
+            signal: new AbortController().signal,
+            onOutput: jest.fn(),
+            onExit: jest.fn(),
+          },
+        ),
+      ).toThrow();
+      expect(b.launchProcess).not.toHaveBeenCalled();
+    } finally {
+      resolve.mockRestore();
+    }
+  });
 
   it('returns SERVICE_UNAVAILABLE on non-Windows activity starts without IO', async () => {
     const b = bindings();

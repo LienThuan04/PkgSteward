@@ -1,6 +1,7 @@
 import {
   buildRunCommand,
   parseRunnerPackageSpec,
+  pnpmPrefixArgs,
 } from '@/npm-runner/execution/runner-command';
 import {
   runnerInput,
@@ -66,6 +67,7 @@ describe('runner command grammar and fixed argv', () => {
   describe.each([
     ['npm', '11.17.0'],
     ['npm', '12.2.2'],
+    ['pnpm', '10.34.9'],
     ['pnpm', '11.22.0'],
   ] as const)('%s %s', (manager, version) => {
     it.each(rows)(
@@ -87,7 +89,14 @@ describe('runner command grammar and fixed argv', () => {
             : // pnpm 11.22 (RT1): only add/update accept --global; the
               // version-switch setting is pm-on-fail (default "download").
               // update-notifier / verify-deps-before-run go through the env.
-              ['--dir', context.path, '--pm-on-fail=warn'];
+              // pnpm 10.34.9 rejects --pm-on-fail; its switch is this config key.
+              [
+                '--dir',
+                context.path,
+                version.startsWith('10.')
+                  ? '--config.manage-package-manager-versions=false'
+                  : '--pm-on-fail=warn',
+              ];
         expect(buildRunCommand(context, request(action, extra))).toEqual({
           file: context.tool?.file,
           args: [
@@ -113,6 +122,9 @@ describe('runner command grammar and fixed argv', () => {
         );
       },
     );
+  });
+  it.each([9, 12, 0, NaN])('gives pnpm major %p no arguments', (major) => {
+    expect(pnpmPrefixArgs(major, 'D:\\TEST\\project')).toBeNull();
   });
   const packageRows: [string, string, string | null][] = [
     ['alpha', 'alpha', null],

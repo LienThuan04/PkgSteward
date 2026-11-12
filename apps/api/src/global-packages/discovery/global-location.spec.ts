@@ -650,6 +650,28 @@ describe.each(TEST_NPM_VERSIONS)('verified location (npm %s)', (v) => {
     expect(h.spawn).not.toHaveBeenCalled();
   });
 
+  it.each(['10.0.0', '10.34.9'])(
+    'refuses pnpm %s: its global layout is not supported yet',
+    async (version) => {
+      const h = setupPnpm();
+      jest
+        .mocked(runnerTools.resolveRunnerTool)
+        .mockImplementation((manager) =>
+          Promise.resolve(
+            testTool(
+              manager as 'npm' | 'pnpm',
+              manager === 'pnpm' ? version : undefined,
+            ),
+          ),
+        );
+      await expectGlobalReason(
+        () => discoverGlobalLocation('pnpm', h.deps),
+        'TOOL_VERSION_MISMATCH',
+      );
+      expect(h.spawn).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     'TOOL_NOT_FOUND',
     'TOOL_VERSION_MISMATCH',
