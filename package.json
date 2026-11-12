@@ -10,6 +10,6 @@
     "start": "node scripts/run-apps.mjs start"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=22.18"
   }
 }

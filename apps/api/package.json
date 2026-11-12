@@ -19,8 +19,8 @@
   },
   "homepage": "https://github.com/LienThuan04/PkgSteward#readme",
   "engines": {
-    "node": ">=24",
-    "pnpm": ">=11"
+    "node": ">=22.18",
+    "pnpm": ">=10"
   },
   "scripts": {
     "build": "nest build",
