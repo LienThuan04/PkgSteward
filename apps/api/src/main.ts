@@ -1,3 +1,4 @@
+import '@/node-runtime-check';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '@/app.module';
 import type { NestExpressApplication } from '@nestjs/platform-express';
