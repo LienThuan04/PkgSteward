@@ -113,6 +113,35 @@ describe('runner child environment (A8)', () => {
       false,
     );
   });
+  it('forces pnpm 10 config through npm_config_ env, which a standalone project reads (pnpm 10.34.9)', () => {
+    // pnpm 10.34.9 applies pnpm_config_verify_deps_before_run only inside a workspace;
+    // its env config layer is npm_config_*, above the project .npmrc.
+    const user = {
+      npm_config_verify_deps_before_run: 'install',
+      NPM_CONFIG_UPDATE_NOTIFIER: 'true',
+    };
+    const pnpm10 = buildRunnerEnvironment(
+      user,
+      tool('pnpm', '10.34.9'),
+      'pnpm',
+      'script',
+    );
+    expect(pnpm10).toMatchObject({
+      npm_config_verify_deps_before_run: 'false',
+      npm_config_update_notifier: 'false',
+      pnpm_config_verify_deps_before_run: 'false',
+      pnpm_config_update_notifier: 'false',
+    });
+    const keys = Object.keys(pnpm10).map((key) => key.toLowerCase());
+    expect(new Set(keys).size).toBe(keys.length);
+    const pnpm11 = buildRunnerEnvironment(
+      user,
+      tool('pnpm', '11.22.0'),
+      'pnpm',
+      'script',
+    );
+    expect(Object.keys(pnpm11).some((key) => /^npm_/i.test(key))).toBe(false);
+  });
   it('keeps only absolute local PATH entries without expanding variables', () => {
     const env = buildRunnerEnvironment(
       {

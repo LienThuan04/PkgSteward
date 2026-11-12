@@ -51,6 +51,20 @@ export function parseRunnerPackageSpec(
   return { name, version, spec: value };
 }
 
+/**
+ * pnpm arguments placed before the subcommand, fixed per major: each major names the
+ * setting that stops pnpm from switching to a pinned version differently, and rejects the
+ * other's flag. An unlisted major gets no arguments (null), so no command is built for it.
+ */
+export function pnpmPrefixArgs(major: number, cwd: string): string[] | null {
+  // pnpm 11.22 (RT1): the version switch is pm-on-fail, default "download" when a pin exists.
+  if (major === 11) return ['--dir', cwd, '--pm-on-fail=warn'];
+  // pnpm 10.34.9: "--pm-on-fail" is an unknown option; without this key it downloads the pin.
+  if (major === 10)
+    return ['--dir', cwd, '--config.manage-package-manager-versions=false'];
+  return null;
+}
+
 export function buildRunCommand(
   context: IRunnerInput,
   input: IRunRequest,
@@ -118,10 +132,10 @@ export function buildRunCommand(
         '--no-progress',
         '--update-notifier=false',
       ]
-    : // pnpm 11.22 (RT1): only add/update accept --global (set below); the
-      // version switch is pm-on-fail, default "download" when a pin exists.
+    : // pnpm 10 and 11: only add/update accept --global (set below).
       // update-notifier / verify-deps-before-run go through the child env.
-      ['--dir', cwd, '--pm-on-fail=warn'];
+      (pnpmPrefixArgs(semver.major(tool.version), cwd) ??
+      fail('TOOL_VERSION_MISMATCH'));
   switch (input.action) {
     case 'install_all':
       args.push(
