@@ -23,8 +23,8 @@ từng dự án) một cách an toàn.
 ## Yêu cầu
 
 - Windows 11
-- Node.js 24 (xem [`.nvmrc`](.nvmrc))
-- pnpm 11 (khuyên dùng), npm hoặc Yarn 1
+- Node.js 22.18 trở lên (đã kiểm trên Node 22 và 24; phát triển dùng Node 24, xem [`.nvmrc`](.nvmrc)). Node cũ hơn sẽ in cảnh báo khi khởi động và có thể không chạy được.
+- pnpm 11 (khuyên dùng), pnpm 10, npm hoặc Yarn 1
 
 ## Bắt đầu
 
