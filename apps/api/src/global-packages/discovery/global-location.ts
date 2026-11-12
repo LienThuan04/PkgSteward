@@ -29,6 +29,7 @@ import {
 import {
   buildGlobalQuery,
   isGlobalAbsolutePath,
+  isPnpmGlobalVersion,
 } from '@/global-packages/execution/global-command';
 import type { GlobalQuery } from '@/global-packages/execution/global-command';
 import {
@@ -615,6 +616,9 @@ async function discoverPnpmGlobalLocation(
     signal,
   };
   const tool = await resolveRunnerTool('pnpm', snapshot, fs);
+  // Refuse before any config file is read: only the pnpm 11 global layout is known.
+  if (!isPnpmGlobalVersion(tool.version))
+    throw failure('TOOL_VERSION_MISMATCH');
   await revalidateRunnerTool(tool, fs, signal);
   signal.throwIfAborted();
   const tools = [tool];

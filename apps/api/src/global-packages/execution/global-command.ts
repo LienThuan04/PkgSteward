@@ -57,6 +57,13 @@ export const isGlobalExactVersion = (value: unknown): value is string =>
   isGlobalTargetVersion(value) &&
   semver.valid(value) !== null;
 
+/**
+ * The runner accepts pnpm 10, but global package management reads and writes the pnpm 11
+ * global layout only; pnpm 10 keeps a different one and stays refused here.
+ */
+export const isPnpmGlobalVersion = (version: string): boolean =>
+  semver.parse(version)?.major === 11;
+
 const hasControl = (value: string): boolean =>
   Array.from(value).some(
     (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
@@ -86,7 +93,8 @@ function assertLauncher(
   if (
     tool.manager !== manager ||
     !isGlobalExactVersion(tool.version) ||
-    !isSupportedRunnerVersion(manager, tool.version)
+    !isSupportedRunnerVersion(manager, tool.version) ||
+    (manager === 'pnpm' && !isPnpmGlobalVersion(tool.version))
   )
     return fail('TOOL_VERSION_MISMATCH');
   if (

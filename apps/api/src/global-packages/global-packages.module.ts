@@ -37,7 +37,11 @@ import type { IGlobalDirectoryAccess } from '@/global-packages/discovery/global-
 import { createGlobalProbeSpawn } from '@/global-packages/discovery/global-location';
 import type { IRunnerTool } from '@/npm-runner/interfaces/npm-runner.types';
 import { createRunnerFs } from '@/npm-runner/toolchain/runner-input';
-import { resolveRunnerTool } from '@/npm-runner/toolchain/runner-tool';
+import {
+  resolveRunnerTool,
+  runnerFailure,
+} from '@/npm-runner/toolchain/runner-tool';
+import { isPnpmGlobalVersion } from '@/global-packages/execution/global-command';
 import { launchRun } from '@/npm-runner/execution/runner-process';
 import type { IRunProcess } from '@/npm-runner/execution/runner-process';
 import { GlobalPackagesController } from '@/global-packages/global-packages.controller';
@@ -124,6 +128,9 @@ export function createGlobalPackagesRuntime(
       fs,
     );
     signal.throwIfAborted();
+    // Probes and execute resolve again here: a pnpm 10 found now must never be registered.
+    if (manager === 'pnpm' && !isPnpmGlobalVersion(tool.version))
+      throw runnerFailure('TOOL_VERSION_MISMATCH');
     if (!tool.entry) throw unavailable('TOOL_LAYOUT_UNSUPPORTED');
     tools.set(key(tool.entry), tool);
     return tool;
