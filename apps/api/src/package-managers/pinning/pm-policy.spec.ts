@@ -109,6 +109,11 @@ describe('public target policy', () => {
     ['npm', '12.2.2', '12.2.1', null],
     ['npm', '11.17.0', '12.2.2', 'TARGET_VERSION_UNSUPPORTED'],
     ['npm', '12.2.2', '11.21.2', 'TARGET_VERSION_UNSUPPORTED'],
+    ['pnpm', '10.34.9', '10.30.0', null],
+    ['pnpm', '10.34.9', '11.22.0', 'TARGET_VERSION_UNSUPPORTED'],
+    ['pnpm', '11.22.0', '10.34.9', 'TARGET_VERSION_UNSUPPORTED'],
+    ['pnpm', '10.34.9', '10.35.0-rc.1', 'TARGET_VERSION_UNSUPPORTED'],
+    ['pnpm', '9.15.9', '10.34.9', 'TOOL_VERSION_MISMATCH'],
     ['pnpm', '11.22.0', '11.28.9', null],
     ['pnpm', '11.22.0', '12.18.0', 'TARGET_VERSION_UNSUPPORTED'],
     ['pnpm', '12.18.0', '12.18.0', 'TOOL_VERSION_MISMATCH'],
@@ -308,6 +313,29 @@ describe('project pin eligibility', () => {
       assessPmPinChange(input({ inputReason: 'TOOL_VERSION_MISMATCH' }))
         .eligible,
     ).toBe(false);
+  });
+  it('pins pnpm 10 only with pnpm 10 installed and keeps the config refusal', () => {
+    const pnpm10 = input({
+      installed: { ...tool, version: '10.34.9' },
+      pin: parsePmPin('pnpm@10.30.0'),
+      targetVersion: '10.34.9',
+    });
+    expect(assessPmPinChange(pnpm10)).toMatchObject({
+      eligible: true,
+      targetPin: 'pnpm@10.34.9',
+      reason: null,
+    });
+    expect(
+      assessPmPinChange({
+        ...pnpm10,
+        installed: { ...tool, version: '11.22.0' },
+      }).reason,
+    ).toBe('TARGET_VERSION_UNSUPPORTED');
+    // e.g. a project with managePackageManagerVersions=true
+    expect(
+      assessPmPinChange({ ...pnpm10, inputReason: 'CONFIG_UNSUPPORTED' })
+        .reason,
+    ).toBe('CONFIG_UNSUPPORTED');
   });
   it('permits manager switches only without conflicting/ambiguous lock families', () => {
     expect(
