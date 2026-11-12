@@ -71,3 +71,120 @@ jobs:
       - run: pnpm i18n:check
       - run: pnpm test
       - run: pnpm build
+
+  # Windows is the target platform; Node 22 is the oldest supported major.
+  backend-windows:
+    name: Backend on Windows, Node ${{ matrix.node }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      # Keep LF endings so `pnpm lint --fix` has nothing to rewrite.
+      - run: git config --global core.autocrlf false
+        working-directory: .
+
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: apps/api/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        shell: bash
+        run: |
+          pnpm lint
+          git diff --exit-code
+
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm test:e2e
+
+  frontend-windows:
+    name: Frontend on Windows, Node ${{ matrix.node }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - run: git config --global core.autocrlf false
+        working-directory: .
+
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm theme:check
+      - run: pnpm i18n:check
+      - run: pnpm test
+      - run: pnpm build
+
+  # How users install PkgSteward: pnpm 10 per app, or npm from the repository root.
+  install-compat:
+    name: Install with ${{ matrix.tool }} on Windows, Node 22
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ['pnpm 10', 'npm']
+    steps:
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      - if: matrix.tool == 'pnpm 10'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install and build with pnpm 10
+        if: matrix.tool == 'pnpm 10'
+        shell: bash
+        run: |
+          pnpm --version
+          for app in apps/api apps/web; do
+            (cd "$app" && pnpm install --frozen-lockfile && pnpm build)
+          done
+
+      - name: Install from the root and build with npm
+        if: matrix.tool == 'npm'
+        shell: bash
+        run: |
+          npm --version
+          npm install
+          for app in apps/api apps/web; do
+            (cd "$app" && npm run build)
+          done
