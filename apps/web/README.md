@@ -145,7 +145,7 @@ allow-scripts or strict-npmrc overrides. Strict npm configuration failures fail 
 
 - **Tools and inputs:** npm 10, npm 11, npm 12, pnpm 10 and pnpm 11; npm 10, npm 12 and pnpm 10 prereleases and other
   majors are refused. Verified with npm 11.17.0, npm 12.2.2, pnpm 11.22.0 and Node 24.19.0; pnpm 10 arguments checked
-  against pnpm 10.34.9. Global packages stay npm 10–12 and pnpm 11 only.
+  against pnpm 10.34.9. Global packages support npm 10–12 and pnpm 10–11.
   Installed npm 12 needs valid `engines.node` metadata satisfied by the backend's Node: missing/malformed metadata
   returns `TOOL_LAYOUT_UNSUPPORTED`, incompatible/invalid Node returns `TOOL_VERSION_MISMATCH`. With installed
   npm 12, any `npm-shrinkwrap.json` (even alongside `package-lock.json`) refuses every action with
@@ -245,9 +245,9 @@ another tab cannot be resumed; wait for it to finish before starting a new one.
 
 ## Global packages
 
-Open `/global-packages` to manage installed global packages with **npm 10, npm 11, npm 12 or pnpm 11**. npm 10 and
-npm 12 prereleases and other majors are refused (`TOOL_VERSION_MISMATCH`); pnpm 10 global operations are refused
-with the same reason until their layout is supported. Installed npm 12 needs valid `engines.node` metadata
+Open `/global-packages` to manage installed global packages with **npm 10, npm 11, npm 12, pnpm 10 or pnpm 11**.
+npm 10, npm 12 and pnpm 10 prereleases and other majors are refused (`TOOL_VERSION_MISMATCH`).
+Installed npm 12 needs valid `engines.node` metadata
 satisfied by the backend's Node: missing/malformed metadata returns `TOOL_LAYOUT_UNSUPPORTED`, incompatible/invalid
 Node returns `TOOL_VERSION_MISMATCH`. Verified with npm 11.17.0, npm 12.2.2, pnpm 11.22.0 and Node 24.19.0;
 how npm 12 handles install scripts of global packages has not been verified. Yarn is not supported;
@@ -258,13 +258,21 @@ no pnpm command runs until execute. Each manager tab shows tool version, global 
 versions and bins, with an as-of time and stale indicator. Empty, unavailable, protected, linked and invalid
 states remain distinct; protected and linked packages have no mutation controls.
 
-If pnpm reports `PNPM_GLOBAL_NOT_CONFIGURED`, run `pnpm setup` in a terminal, ensure its global bin directory
-is on PATH, open a new terminal, then restart PkgSteward. The app does not run setup or edit PATH.
-Packages installed together in one `pnpm add -g` are read-only (`GLOBAL_GROUP_UNSUPPORTED`); manage them in a
+If pnpm reports `PNPM_GLOBAL_NOT_CONFIGURED`, run `pnpm setup` in a terminal, ensure `PNPM_HOME` (or your configured
+global bin directory) is on PATH, open a new terminal, then restart PkgSteward. The app does not run setup or edit PATH.
+With pnpm 11, packages installed together in one `pnpm add -g` are read-only (`GLOBAL_GROUP_UNSUPPORTED`); manage them in a
 terminal because a change or removal could affect the whole group. Configuration that can load code or move
 the layout also makes pnpm read-only (`CONFIG_UNSUPPORTED`), including pnpmfile/hooks, `lockfileDir`,
 layout/workspace directories, shell/Node execution options and override/extension maps. Inherited `PNPM_*`
 switches are stripped before commands run; only validated location and safety settings are supplied.
+
+pnpm 10 keeps all global packages in one shared project. A change or removal reruns pnpm on that project.
+Before confirmation, the preview lists the other packages with their names, versions and linked markers,
+and warns that the app checks afterwards that they are unchanged. If the check fails, the result could not be
+verified (`POSTCONDITION_FAILED`): refresh the inventory and inspect the packages before another action.
+There is no automatic retry or undo. `link:`, file, git, tarball and alias installs are listed read-only;
+linked packages can stay in the shared project while another package changes. Old package versions may stay
+on disk until pnpm prunes them.
 
 **Only change global packages you trust.** Lifecycle and transitive code runs with your user privileges,
 without a sandbox, and can affect the whole machine. Other programs using the package may break. A failed,

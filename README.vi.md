@@ -20,6 +20,20 @@ từng dự án) một cách an toàn.
   filesystem tại thời điểm gọi API.
 - **An toàn là trên hết:** mọi thao tác xoá hoặc ảnh hưởng toàn máy đều đi qua bước *xem trước → xác nhận*.
 
+## Gói global
+
+Quản lý gói global bằng npm 10/11/12 hoặc pnpm 10/11 qua bước **xem trước → xác nhận**.
+Cần thiết lập pnpm global trước: chạy `pnpm setup` trong terminal, bảo đảm `PNPM_HOME` (hoặc thư mục lệnh
+global đã cấu hình) có trong PATH, mở terminal mới rồi khởi động lại PkgSteward.
+
+pnpm 10 giữ mọi gói global trong một dự án dùng chung. Đổi phiên bản hoặc xoá một gói sẽ chạy lại pnpm trên
+dự án đó. Bản xem trước liệt kê các gói khác; sau thao tác, PkgSteward kiểm tra chúng vẫn giữ nguyên.
+Nếu kiểm tra thất bại, kết quả không thể xác minh: hãy làm mới danh sách và kiểm tra các gói trước thao tác tiếp theo.
+Ứng dụng không tự thử lại hay hoàn tác. Các gói cài bằng `link:`, file, git, tarball và alias chỉ được hiển thị,
+không thể sửa tại đây. Phiên bản gói cũ có thể còn trên đĩa đến khi pnpm dọn chúng. Chỉ thay đổi gói bạn tin cậy:
+script vòng đời và mã phụ thuộc có thể ảnh hưởng toàn máy với quyền của bạn, không có môi trường cô lập.
+Xem [Gói global](apps/web/README.md#global-packages) để biết đầy đủ quy trình và giới hạn (tiếng Anh).
+
 ## Yêu cầu
 
 - Windows 11
