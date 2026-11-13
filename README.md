@@ -30,6 +30,20 @@ manager version) safely.
 > may miss processes that escape the tracked tree, and a junction swap at launch is not fully prevented.
 > See [Command runner API](apps/api/README.md#command-runner-api) for tool/config limits and cleanup behavior.
 
+## Global packages
+
+Manage global packages with npm 10/11/12 or pnpm 10/11 through **preview → confirm**.
+pnpm globals must already be set up: run `pnpm setup` in a terminal, ensure `PNPM_HOME` (or your configured
+global bin directory) is on PATH, open a new terminal and restart PkgSteward.
+
+pnpm 10 keeps all global packages in one shared project. Changing or removing one reruns pnpm on that project.
+The preview lists the other packages; afterwards, PkgSteward verifies they are unchanged. If verification fails,
+the result could not be verified: refresh the inventory and inspect the packages before another action.
+There is no automatic retry or undo. `link:`, file, git, tarball and alias installs are listed read-only.
+Old package versions may stay on disk until pnpm prunes them. Only change packages you trust: lifecycle and
+transitive code can affect the whole machine with your user privileges, without a sandbox.
+See [Global packages](apps/web/README.md#global-packages) for the full workflow and limits.
+
 ## Requirements
 
 - Windows 11

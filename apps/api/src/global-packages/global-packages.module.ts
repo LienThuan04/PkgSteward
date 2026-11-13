@@ -128,7 +128,7 @@ export function createGlobalPackagesRuntime(
       fs,
     );
     signal.throwIfAborted();
-    // Probes and execute resolve again here: a pnpm 10 found now must never be registered.
+    // Registration, discovery and command construction share the same version gate.
     if (manager === 'pnpm' && !isPnpmGlobalVersion(tool.version))
       throw runnerFailure('TOOL_VERSION_MISMATCH');
     if (!tool.entry) throw unavailable('TOOL_LAYOUT_UNSUPPORTED');

@@ -397,9 +397,8 @@ folder of that directory, and leave two small `pkgsteward-test-*` folders in the
 
 ## Global packages API
 
-List, remove or change an installed global package with **npm 10, npm 11, npm 12 or pnpm 11** on Windows. npm 10
-and npm 12 prereleases and other majors are refused (`TOOL_VERSION_MISMATCH`); pnpm 10 global operations are
-refused with the same reason until their layout is supported. Yarn is not supported.
+List, remove or change an installed global package with **npm 10, npm 11, npm 12, pnpm 10 or pnpm 11** on Windows.
+npm 10, npm 12 and pnpm 10 prereleases and other majors are refused (`TOOL_VERSION_MISMATCH`). Yarn is not supported.
 Installed npm 12 requires valid `engines.node` metadata satisfied by the backend's Node: missing/malformed
 metadata returns `TOOL_LAYOUT_UNSUPPORTED`, incompatible/invalid Node returns `TOOL_VERSION_MISMATCH`.
 Verified with npm 11.17.0, npm 12.2.2, pnpm 11.22.0 and Node 24.19.0; how npm 12 handles install scripts of
@@ -409,8 +408,9 @@ unknown versions/layouts and Corepack-only tools are unavailable. The app never 
 An explicit **Refresh** discovers npm locations through read-only manager queries: npm prefix/root/config/cache.
 These queries use a neutral working directory, not a scanned project; the tool may still write caches.
 pnpm discovery and inventory listing read configuration and filesystem metadata statically; no pnpm command runs
-until execute. pnpm globals must already be set up: run `pnpm setup` in a terminal, ensure its global bin directory
-is on PATH, open a new terminal, then restart PkgSteward. Otherwise availability reports `PNPM_GLOBAL_NOT_CONFIGURED`.
+until execute. pnpm globals must already be set up: run `pnpm setup` in a terminal, ensure `PNPM_HOME` (or your
+configured global bin directory) is on PATH, open a new terminal, then restart PkgSteward.
+Otherwise availability reports `PNPM_GLOBAL_NOT_CONFIGURED`.
 The app does not run setup or edit PATH. GET requests and page loads only read retained RAM snapshots and never run commands.
 Preview and execute recheck the discovered locations and configuration; clients cannot supply paths, argv or environment.
 
@@ -446,6 +446,15 @@ are rejected. Only latest/status/log polling bypasses throttling; other requests
   requires `confirm: true`, acknowledgement of `MACHINE_WIDE`, and the exact, case-sensitive server text:
   `REMOVE GLOBAL <manager> <name>` or `CHANGE GLOBAL <manager> <name> TO <version>`. Whitespace is not trimmed.
   Bin differences describe declared metadata, not all effects of scripts or transitive packages.
+- **pnpm 10 shared project:** all global packages live in one project. Changing or removing one reruns pnpm on
+  that project. A preview's optional `sharedPackages: { name: string; version: string; linked: boolean }[]`
+  lists the other direct packages; a non-empty list adds warning `PNPM_SHARED_GLOBAL_PROJECT`. npm and pnpm 11
+  previews omit this field. After execution, the app verifies that each listed package's spec, installed version,
+  link destination and command shims are unchanged, and that no new direct package appeared. Failure means the
+  result could not be verified (`POSTCONDITION_FAILED`, `refreshRequired`); refresh the inventory and inspect it
+  before another action. There is no automatic retry or undo. `link:`, file, git, tarball and alias installs are
+  listed read-only. Old package versions may stay on disk until pnpm prunes them; retained directories are not
+  extra installed packages. Linked neighbours can remain in the shared project while another package changes.
 - **Revalidation and replay:** execute rechecks tool, location, config, inventory, ownership, package/bin and
   target metadata before mutation. Tags are resolved to an exact version and checked again; moved tags require
   another preview. Wrong consent returns `400 VALIDATION_ERROR`. Changed, expired or consumed previews return
@@ -459,7 +468,7 @@ are rejected. Only latest/status/log polling bypasses throttling; other requests
   the Node executable, app installation, source checkout or data directory is refused. Confirmation cannot override
   protection. Linked packages are read-only (`LINKED_PACKAGE`); unsafe bins, collisions or incomplete ownership
   prevent mutation (`BIN_CONFLICT`).
-- **pnpm layout:** inventory validates the versioned global root, group metadata, internal links into the store
+- **pnpm 11 layout:** inventory validates the versioned global root, group metadata, internal links into the store
   and package/bin ownership. Packages installed together in one `pnpm add -g` are read-only
   (`GLOBAL_GROUP_UNSUPPORTED`): change or removal could affect the whole group; manage them in a terminal.
   Unreferenced physical install directories block change because pnpm add can clean them up; remove does not
@@ -474,6 +483,8 @@ are rejected. Only latest/status/log polling bypasses throttling; other requests
   location settings are refused. Config secrets are not returned or logged. A typed exact target still requires
   online metadata; selecting the installed version returns `NO_VERSION_CHANGE`. Major changes, downgrades and
   prereleases produce warnings.
+  For pnpm 10 change, registry and protection checks cover every package in the shared project, including
+  matching scoped registries on other packages. A protected neighbour blocks change and removal.
 - **pnpm configuration:** settings that can load code or move the layout make pnpm read-only
   (`CONFIG_UNSUPPORTED`), including pnpmfile/hooks, `lockfileDir`, layout/workspace directories, shell/Node
   execution options and override/extension maps. Registry restrictions alone still allow remove when the
@@ -500,7 +511,7 @@ The following arguments come last:
 | Remove | `uninstall --global -- <name>` |
 | Change | `install --global -- <name>@<exact-version>` |
 
-pnpm uses these exact arguments after its JavaScript entry point (`W` = neutral working directory,
+pnpm 11 uses these exact arguments after its JavaScript entry point (`W` = neutral working directory,
 `G` = unversioned global base, `B` = global bin directory, `S` = versioned store; all are validated locations):
 
 ```text
@@ -510,6 +521,8 @@ pnpm uses these exact arguments after its JavaScript entry point (`W` = neutral 
 
 `NAME` is the selected package and `EXACT` the resolved version. Remove takes no registry or bin-directory flag;
 its bin directory comes from pinned configuration. pnpm does not receive npm's user/global-config flags.
+pnpm 10 uses the same arguments with `--config.manage-package-manager-versions=false` in place of
+`--pm-on-fail=warn`. Its shared project is `G\5`; the global bin directory may be `PNPM_HOME` itself.
 
 No arbitrary arguments, elevation, tool-download fallback or automatic mutation retry is available. The child
 uses the command runner's sanitized environment: backend settings, `NODE_ENV`, `NODE_OPTIONS`, project-run

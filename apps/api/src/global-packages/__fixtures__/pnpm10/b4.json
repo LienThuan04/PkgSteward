@@ -1,0 +1,41 @@
+{
+  "files": {
+    "package.json": "{\n\t\"dependencies\": {\n\t\t\"@tootallnate/once\": \"2.0.0\",\n\t\t\"is-number\": \"7.0.0\",\n\t\t\"is-odd\": \"3.0.1\",\n\t\t\"semver\": \"7.7.3\"\n\t}\n}\n",
+    "pnpm-lock.yaml": "lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n\nimporters:\n\n  .:\n    dependencies:\n      '@tootallnate/once':\n        specifier: 2.0.0\n        version: 2.0.0\n      is-number:\n        specifier: 7.0.0\n        version: 7.0.0\n      is-odd:\n        specifier: 3.0.1\n        version: 3.0.1\n      semver:\n        specifier: 7.7.3\n        version: 7.7.3\n\npackages:\n\n  '@tootallnate/once@2.0.0':\n    resolution: {integrity: sha512-XCuKFP5PS55gnMVu3dty8KPatLqUoy/ZYzDzAGCQ8JNFCkLXzmI7vNHCR+XpbZaMWQK/vQubr7PkYq8g470J/A==}\n    engines: {node: '>= 10'}\n\n  is-number@6.0.0:\n    resolution: {integrity: sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==}\n    engines: {node: '>=0.10.0'}\n\n  is-number@7.0.0:\n    resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}\n    engines: {node: '>=0.12.0'}\n\n  is-odd@3.0.1:\n    resolution: {integrity: sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==}\n    engines: {node: '>=4'}\n\n  semver@7.7.3:\n    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}\n    engines: {node: '>=10'}\n    hasBin: true\n\nsnapshots:\n\n  '@tootallnate/once@2.0.0': {}\n\n  is-number@6.0.0: {}\n\n  is-number@7.0.0: {}\n\n  is-odd@3.0.1:\n    dependencies:\n      is-number: 6.0.0\n\n  semver@7.7.3: {}\n",
+    "node_modules/.modules.yaml": "{\n  \"hoistedDependencies\": {},\n  \"hoistPattern\": [\n    \"*\"\n  ],\n  \"included\": {\n    \"dependencies\": true,\n    \"devDependencies\": true,\n    \"optionalDependencies\": true\n  },\n  \"injectedDeps\": {},\n  \"layoutVersion\": 5,\n  \"nodeLinker\": \"isolated\",\n  \"packageManager\": \"pnpm@10.34.9\",\n  \"pendingBuilds\": [],\n  \"publicHoistPattern\": [],\n  \"prunedAt\": \"Fri, 13 Nov 2026 06:43:57 GMT\",\n  \"registries\": {\n    \"default\": \"https://registry.npmjs.org/\",\n    \"@jsr\": \"https://npm.jsr.io/\"\n  },\n  \"skipped\": [],\n  \"storeDir\": \"D:\\\\TEST\\\\pnpm10\\\\store\\\\v10\",\n  \"virtualStoreDir\": \"D:\\\\TEST\\\\pnpm10\\\\global\\\\5\\\\.pnpm\",\n  \"virtualStoreDirMaxLength\": 60\n}",
+    "node_modules/.pnpm-workspace-state-v1.json": "{\n  \"lastValidatedTimestamp\": 1794552243116,\n  \"projects\": {},\n  \"pnpmfiles\": [],\n  \"settings\": {\n    \"autoInstallPeers\": true,\n    \"dedupeDirectDeps\": false,\n    \"dedupeInjectedDeps\": true,\n    \"dedupePeerDependents\": true,\n    \"dedupePeers\": false,\n    \"dev\": true,\n    \"excludeLinksFromLockfile\": false,\n    \"hoistPattern\": [\n      \"*\"\n    ],\n    \"hoistWorkspacePackages\": true,\n    \"injectWorkspacePackages\": false,\n    \"linkWorkspacePackages\": false,\n    \"nodeLinker\": \"isolated\",\n    \"optional\": true,\n    \"peersSuffixMaxLength\": 1000,\n    \"preferWorkspacePackages\": false,\n    \"production\": true,\n    \"publicHoistPattern\": []\n  },\n  \"filteredInstall\": false\n}\n",
+    "node_modules/.pnpm/lock.yaml": "lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n\nimporters:\n\n  .:\n    dependencies:\n      '@tootallnate/once':\n        specifier: 2.0.0\n        version: 2.0.0\n      is-number:\n        specifier: 7.0.0\n        version: 7.0.0\n      is-odd:\n        specifier: 3.0.1\n        version: 3.0.1\n      semver:\n        specifier: 7.7.3\n        version: 7.7.3\n\npackages:\n\n  '@tootallnate/once@2.0.0':\n    resolution: {integrity: sha512-XCuKFP5PS55gnMVu3dty8KPatLqUoy/ZYzDzAGCQ8JNFCkLXzmI7vNHCR+XpbZaMWQK/vQubr7PkYq8g470J/A==}\n    engines: {node: '>= 10'}\n\n  is-number@6.0.0:\n    resolution: {integrity: sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg==}\n    engines: {node: '>=0.10.0'}\n\n  is-number@7.0.0:\n    resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}\n    engines: {node: '>=0.12.0'}\n\n  is-odd@3.0.1:\n    resolution: {integrity: sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA==}\n    engines: {node: '>=4'}\n\n  semver@7.7.3:\n    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}\n    engines: {node: '>=10'}\n    hasBin: true\n\nsnapshots:\n\n  '@tootallnate/once@2.0.0': {}\n\n  is-number@6.0.0: {}\n\n  is-number@7.0.0: {}\n\n  is-odd@3.0.1:\n    dependencies:\n      is-number: 6.0.0\n\n  semver@7.7.3: {}\n"
+  },
+  "list": [
+    {
+      "path": "D:\\TEST\\pnpm10\\global\\5",
+      "private": false,
+      "dependencies": {
+        "@tootallnate/once": {
+          "from": "@tootallnate/once",
+          "version": "2.0.0",
+          "resolved": "https://registry.npmjs.org/@tootallnate/once/-/once-2.0.0.tgz",
+          "path": "D:\\TEST\\pnpm10\\global\\5\\.pnpm\\@tootallnate+once@2.0.0\\node_modules\\@tootallnate\\once"
+        },
+        "is-number": {
+          "from": "is-number",
+          "version": "7.0.0",
+          "resolved": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+          "path": "D:\\TEST\\pnpm10\\global\\5\\.pnpm\\is-number@7.0.0\\node_modules\\is-number"
+        },
+        "is-odd": {
+          "from": "is-odd",
+          "version": "3.0.1",
+          "resolved": "https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",
+          "path": "D:\\TEST\\pnpm10\\global\\5\\.pnpm\\is-odd@3.0.1\\node_modules\\is-odd"
+        },
+        "semver": {
+          "from": "semver",
+          "version": "7.7.3",
+          "resolved": "https://registry.npmjs.org/semver/-/semver-7.7.3.tgz",
+          "path": "D:\\TEST\\pnpm10\\global\\5\\.pnpm\\semver@7.7.3\\node_modules\\semver"
+        }
+      }
+    }
+  ]
+}

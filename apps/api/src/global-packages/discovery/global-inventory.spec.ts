@@ -16,6 +16,7 @@ import {
 } from '@/global-packages/__fixtures__/global-adapters';
 import type { GlobalManager } from '@/global-packages/interfaces/global-packages.types';
 import { pnpmInventoryFixture } from '@/global-packages/__fixtures__/pnpm11/inventory';
+import { pnpm10InventoryFixture } from '@/global-packages/__fixtures__/pnpm10/inventory';
 import {
   npm11Sh,
   npm12Shims,
@@ -33,6 +34,23 @@ const npm12Empty = npm12Fixture('empty');
 
 const list = (manager: GlobalManager, dependencies: unknown): unknown =>
   manager === 'npm' ? { dependencies } : [{ path: P.global, dependencies }];
+
+describe('pnpm major-specific static inventory dispatch', () => {
+  it('selects the pnpm 10 reader only with private pnpm10 location facts', async () => {
+    const h = await pnpm10InventoryFixture(2);
+    const r = await readGlobalInventory(h.location, h.deps);
+    expect(r.packages.map((p) => p.name)).toEqual(['is-number', 'semver']);
+    expect(r.pnpm10Inventory).toBeDefined();
+    expect(r.pnpmInventory).toBeUndefined();
+    expect(h.spawn).not.toHaveBeenCalled();
+    const { pnpm10, ...withoutFacts } = h.location;
+    void pnpm10;
+    await expectGlobalReason(
+      () => readGlobalInventory(withoutFacts, h.deps),
+      'INVENTORY_FAILED',
+    );
+  });
+});
 
 describe('strict bounded global list parsers', () => {
   it.each(['npm', 'pnpm'] as const)(

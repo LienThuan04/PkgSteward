@@ -701,7 +701,7 @@ describe('pnpm 11 command boundary', () => {
     );
   });
 
-  it.each(['9.15.9', '10.30.0', '12.0.0'])(
+  it.each(['9.15.9', '10.34.9-rc.1', '12.0.0'])(
     'rejects unsupported major %s without fallback/probe',
     async (version) => {
       const location = pnpmLocation();

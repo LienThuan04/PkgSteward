@@ -38,6 +38,8 @@ import {
   revalidateRunnerTool,
 } from '@/npm-runner/toolchain/runner-tool';
 import { readPnpmGlobalConfig } from '@/global-packages/config/pnpm-global-config';
+import { readPnpm10GlobalConfig } from '../config/pnpm10-global-config';
+import type { IPnpm10GlobalConfig } from '../interfaces/pnpm10-global.types';
 
 const failure = (reason: GlobalReasonCode): AppException =>
   new AppException(409, 'Global location or probe is unavailable', 'CONFLICT', {
@@ -616,7 +618,7 @@ async function discoverPnpmGlobalLocation(
     signal,
   };
   const tool = await resolveRunnerTool('pnpm', snapshot, fs);
-  // Refuse before any config file is read: only the pnpm 11 global layout is known.
+  // Refuse unsupported versions before reading their configuration.
   if (!isPnpmGlobalVersion(tool.version))
     throw failure('TOOL_VERSION_MISMATCH');
   await revalidateRunnerTool(tool, fs, signal);
@@ -639,7 +641,7 @@ async function discoverPnpmGlobalLocation(
       throw error;
   }
   const { cwd, ancestorConfigs } = await prepareCwd(deps);
-  const pnpm = await readPnpmGlobalConfig({
+  const configDeps = {
     fs,
     signal,
     tool,
@@ -647,8 +649,14 @@ async function discoverPnpmGlobalLocation(
     environment: deps.environment,
     // Source parents may be a user profile or the installed tool. They are
     // read-only inputs; destination scope is checked separately below.
-    checkDirectory: (path) => assertGlobalDirectory(path, fs, signal, true),
-  });
+    checkDirectory: (path: string) =>
+      assertGlobalDirectory(path, fs, signal, true),
+  };
+  const pnpm10 = tool.version.startsWith('10.')
+    ? await readPnpm10GlobalConfig(configDeps)
+    : undefined;
+  const pnpm11 = pnpm10 ? undefined : await readPnpmGlobalConfig(configDeps);
+  const pnpm = (pnpm10 ?? pnpm11)!;
   for (const path of [
     pnpm.homeDir,
     pnpm.globalDir,
@@ -661,7 +669,8 @@ async function discoverPnpmGlobalLocation(
   ]) {
     if (path !== null) assertLocationScope(path, deps);
   }
-  if (
+  if (pnpm10) assertPnpm10LocationLayout(pnpm10, pnpm10.storeDir);
+  else if (
     overlaps(pnpm.globalRoot, pnpm.binDir) ||
     (pnpm.storeDir &&
       (overlaps(pnpm.storeDir, pnpm.globalRoot) ||
@@ -697,12 +706,14 @@ async function discoverPnpmGlobalLocation(
     globalRoot: pnpm.globalRoot,
     binDir: pnpm.binDir,
     cacheDir: pnpm.cacheDir,
-    storeDir: pnpm.storeDir,
-    userConfig: pnpm.authFile,
-    globalConfig: win32.join(pnpm.configDir, 'config.yaml'),
+    storeDir: pnpm10 ? null : pnpm.storeDir,
+    userConfig: pnpm10 ? pnpm10.userConfig : pnpm11!.authFile,
+    globalConfig: pnpm10
+      ? pnpm10.globalConfig
+      : win32.join(pnpm.configDir, 'config.yaml'),
     configIdentities: [...pnpm.configIdentities],
     missingConfigPaths: [...pnpm.missingConfigPaths],
-    pnpm,
+    ...(pnpm10 ? { pnpm10 } : { pnpm: pnpm11 }),
     cwd,
     protectedPaths: [
       ...new Set([
@@ -714,6 +725,25 @@ async function discoverPnpmGlobalLocation(
       ]),
     ],
   };
+}
+
+export function assertPnpm10LocationLayout(
+  config: IPnpm10GlobalConfig,
+  store: string | null,
+): void {
+  const { homeDir, globalDir, binDir } = config;
+  const defaultBin = comparable(binDir) === comparable(homeDir);
+  const permitted = (path: string): boolean =>
+    defaultBin &&
+    comparable(path) !== comparable(binDir) &&
+    inside(path, binDir);
+  if (
+    (overlaps(globalDir, binDir) && !permitted(globalDir)) ||
+    (store &&
+      (overlaps(store, globalDir) ||
+        (overlaps(store, binDir) && !permitted(store))))
+  )
+    throw failure('LOCATION_AMBIGUOUS');
 }
 
 export function assertGlobalLocationsDistinct(

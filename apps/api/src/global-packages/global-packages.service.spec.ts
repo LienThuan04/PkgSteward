@@ -43,6 +43,170 @@ import { npmLifecycleFixture } from '@/global-packages/__fixtures__/npm-overlay/
 import { npmTarget } from '@/global-packages/__fixtures__/npm-overlay/facts';
 import { PNPM_TEST_PATHS as Q } from '@/global-packages/__fixtures__/pnpm11/facts';
 import type { IPnpmGlobalPolicy } from '@/global-packages/interfaces/pnpm-global.types';
+import { pnpm10InventoryFixture } from './__fixtures__/pnpm10/inventory';
+import { readPnpm10GlobalInventory } from './discovery/pnpm10-global-inventory';
+
+describe('pnpm 10 shared-project service integration', () => {
+  afterEach(() => jest.restoreAllMocks());
+  async function finish10(
+    service: GlobalPackagesService,
+    id: string,
+  ): Promise<IGlobalJob> {
+    for (let index = 0; index < 100; index++) {
+      const job = service.getJob(id);
+      if (job.phase === 'done') return job;
+      await settleJobs();
+    }
+    throw new Error('TEST pnpm 10 job did not finish');
+  }
+  async function setup10(action: 'change' | 'remove' = 'remove') {
+    const f = testRuntime();
+    const h = await pnpm10InventoryFixture(action === 'change' ? 4 : 6);
+    f.runtime.fs = h.fs;
+    f.runtime.environment = h.environment;
+    jest.spyOn(f.runtime, 'resolveTool').mockResolvedValue(h.location.tool);
+    jest
+      .spyOn(locationAdapter, 'discoverGlobalLocation')
+      .mockImplementation((manager) =>
+        manager === 'pnpm'
+          ? Promise.resolve(h.location)
+          : Promise.reject(
+              new AppException(409, 'TEST absent', 'CONFLICT', {
+                reason: 'TOOL_NOT_FOUND',
+              }),
+            ),
+      );
+    jest
+      .spyOn(inventoryAdapter, 'readGlobalInventory')
+      .mockImplementation((location, deps) =>
+        readPnpm10GlobalInventory(location, deps),
+      );
+    jest.spyOn(GlobalRegistry.prototype, 'getTarget').mockResolvedValue({
+      name: 'is-number',
+      version: '6.0.0',
+      requestedVersion: '6.0.0',
+      manifestHash: 'TEST',
+      integrity: 'TEST',
+      bins: [],
+      engines: null,
+      deprecated: false,
+    });
+    const service = new GlobalPackagesService(f.runtime);
+    const request = {
+      requestId: f.uuid(),
+      manager: 'pnpm' as const,
+      action,
+      package: action === 'change' ? 'is-number' : 'semver',
+      ...(action === 'change' ? { targetVersion: '6.0.0' } : {}),
+    };
+    const ready = async () => {
+      const start = await service.preview(request);
+      const job = await finish10(service, start.jobId);
+      expect(job).toMatchObject({ status: 'completed', failureCode: null });
+      return job.preview!;
+    };
+    const execute = (preview: IGlobalPreview) =>
+      service.execute(
+        testConsent({
+          requestId: f.uuid(),
+          previewId: preview.previewId,
+          confirmText: preview.confirmText,
+        }),
+      );
+    return { ...f, h, service, ready, execute };
+  }
+  it('previews linked neighbours and refuses post-intent neighbour drift with zero launch', async () => {
+    const f = await setup10();
+    const preview = await f.ready();
+    expect(preview.sharedPackages?.some((d) => d.linked)).toBe(true);
+    f.audit.mockImplementation((record) => {
+      if (record.phase === 'intent')
+        f.h.put(`${f.h.location.binDir}\\foreign.txt`, { text: 'TEST drift' });
+      return Promise.resolve();
+    });
+    const start = await f.execute(preview);
+    expect(await finish10(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode: 'PREVIEW_CHANGED',
+      mutationSpawned: false,
+    });
+    expect(f.child.launch).not.toHaveBeenCalled();
+  });
+  it.each(['change', 'remove'] as const)(
+    'executes %s once and verifies static shared-project state',
+    async (action) => {
+      const f = await setup10(action),
+        preview = await f.ready();
+      const start = await f.execute(preview);
+      await f.service.waitForPreflight(start.jobId);
+      await settleJobs();
+      expect(f.child.launch).toHaveBeenCalledTimes(1);
+      const after = await pnpm10InventoryFixture(action === 'change' ? 5 : 7);
+      f.h.entries.clear();
+      for (const [path, entry] of after.entries) f.h.entries.set(path, entry);
+      f.child.exit();
+      expect(await finish10(f.service, start.jobId)).toMatchObject({
+        status: 'completed',
+        gateHeld: false,
+        refreshRequired: false,
+      });
+      expect(f.probe).not.toHaveBeenCalled();
+    },
+  );
+  it('reports postcondition drift with refresh required and no relaunch', async () => {
+    const f = await setup10('change'),
+      preview = await f.ready();
+    const start = await f.execute(preview);
+    await f.service.waitForPreflight(start.jobId);
+    await settleJobs();
+    f.child.exit();
+    expect(await finish10(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode: 'POSTCONDITION_FAILED',
+      refreshRequired: true,
+    });
+    expect(f.child.launch).toHaveBeenCalledTimes(1);
+  });
+  it.each(['failure', 'cancel', 'timeout', 'uncertain'] as const)(
+    'retains partial-state handling after %s',
+    async (kind) => {
+      const f = await setup10();
+      if (kind === 'timeout') f.runtime.timeoutMs = 1000;
+      const preview = await f.ready();
+      if (kind === 'uncertain') f.child.stop.mockResolvedValue('unconfirmed');
+      const start = await f.execute(preview);
+      await f.service.waitForPreflight(start.jobId);
+      await settleJobs();
+      expect(f.child.launch).toHaveBeenCalledTimes(1);
+      if (kind === 'failure')
+        f.child.exit({ exitCode: 1, failureCode: 'COMMAND_FAILED' });
+      else if (kind === 'timeout') {
+        f.clock.advance(1000);
+        f.child.exit();
+      } else {
+        const pending = f.service.cancel(start.jobId);
+        f.child.exit({
+          termination: kind === 'uncertain' ? 'unconfirmed' : 'verified',
+        });
+        await pending;
+      }
+      expect(await finish10(f.service, start.jobId)).toMatchObject({
+        status:
+          kind === 'failure'
+            ? 'failed'
+            : kind === 'timeout'
+              ? 'timed_out'
+              : kind === 'uncertain'
+                ? 'termination_failed'
+                : 'cancelled',
+        mutationSpawned: true,
+        mayHaveChanged: true,
+      });
+      expect(f.child.launch).toHaveBeenCalledTimes(1);
+      if (kind === 'uncertain') expect(f.busy()).toBe(true);
+    },
+  );
+});
 
 // npm-self reads ~40 exact paths statically per check; a fixed microtask budget is not enough.
 // Mocks resolve as microtasks and the clock is fake, so one macrotask turn settles the chain.
