@@ -75,7 +75,15 @@ export function GlobalPackagePreview({ controller, blocked, onCloseAutoFocus, on
           </li>)}</ul>
         </div>}
         {preview.risk.reasons.length ? <ul className="space-y-2">{preview.risk.reasons.map(({ code }) => <li key={code}><GlobalCodeMessage kind="risk" code={code} /></li>)}</ul> : null}
-        {preview.warningCodes.length ? <ul className="space-y-2">{preview.warningCodes.map(code => <li key={code}><GlobalCodeMessage kind="warnings" code={code} /></li>)}</ul> : null}
+        {preview.sharedPackages?.length ? <section aria-labelledby={`${id}-shared`} className="min-w-0 space-y-3 rounded-md bg-muted p-4">
+          <p><AlertTriangleIcon aria-hidden="true" className="mr-1 inline size-4" />{t("warnings.PNPM_SHARED_GLOBAL_PROJECT")}</p>
+          <h3 id={`${id}-shared`} className="font-semibold">{t("dialog.sharedPackages")}</h3>
+          <ul className="min-w-0 space-y-2">{preview.sharedPackages.map(pkg => <li key={pkg.name} className="break-all">
+            <span className="font-mono">{pkg.name} {pkg.version}</span>{pkg.linked ? <> · {t("dialog.linkedPackage")}</> : null}
+          </li>)}</ul>
+        </section> : null}
+        {preview.warningCodes.length ? <ul className="space-y-2">{preview.warningCodes.filter(code => code !== "PNPM_SHARED_GLOBAL_PROJECT")
+          .map(code => <li key={code}><GlobalCodeMessage kind="warnings" code={code} /></li>)}</ul> : null}
         {repair ? null : <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           <div className="min-w-0"><h3 className="font-semibold">{t("dialog.binsAdded")}</h3>
             {preview.bins.added.length ? <ul className="break-all font-mono">{preview.bins.added.map(bin => <li key={bin.name}>{bin.name} → {bin.target}</li>)}</ul> : <p>{t("none")}</p>}

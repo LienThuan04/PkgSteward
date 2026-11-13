@@ -14,7 +14,7 @@ export type GlobalReasonCode = RunFailureCode
   | "TARGET_VERSION_UNSUPPORTED" | "ENGINE_UNSUPPORTED" | "FILE_IN_USE" | "ACCESS_DENIED" | "DELETE_FAILED" | "PATH_TOO_LONG"
 export type GlobalWarningCode = RunWarningCode | "MAJOR_VERSION_CHANGE" | "VERSION_DOWNGRADE"
   | "PRERELEASE_VERSION" | "GLOBAL_CODE_EXECUTION" | "GLOBAL_CONSUMERS_UNKNOWN" | "PROCESS_ESCAPE_RESIDUAL"
-  | "TERMINAL_NPM_SWITCH"
+  | "TERMINAL_NPM_SWITCH" | "PNPM_SHARED_GLOBAL_PROJECT"
 
 export interface GlobalActivityRequest { requestId: string }
 export interface GlobalVersionsRequest extends GlobalActivityRequest { manager: GlobalManager; package: string }
@@ -76,6 +76,7 @@ export interface GlobalNpmPreview {
   prefix: string
   repairTargets: string[]
 }
+export interface GlobalSharedPackage { name: string; version: string; linked: boolean }
 export interface GlobalPreview {
   previewId: string
   createdAt: string
@@ -94,6 +95,15 @@ export interface GlobalPreview {
   risk: Risk
   confirmText: string
   npm?: GlobalNpmPreview
+  sharedPackages?: GlobalSharedPackage[]
+}
+
+export function parseGlobalSharedPackages(preview: Pick<GlobalPreview, "manager" | "managerVersion"> & { sharedPackages?: unknown }): GlobalSharedPackage[] | undefined {
+  if (preview.manager !== "pnpm" || !/^10\./.test(preview.managerVersion)) return undefined
+  const packages = preview.sharedPackages
+  if (!Array.isArray(packages) || !packages.every(item => typeof item === "object" && item !== null
+    && typeof item.name === "string" && typeof item.version === "string" && typeof item.linked === "boolean")) return undefined
+  return packages.map(({ name, version, linked }) => ({ name, version, linked }))
 }
 export interface GlobalNpmRepairProgress {
   deleted: string[]

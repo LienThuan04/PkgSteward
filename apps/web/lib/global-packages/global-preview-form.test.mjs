@@ -72,3 +72,46 @@ test("expiry disables at the exact boundary; invalid dates fail closed and never
   const invalid = setGlobalConsent(displayGlobalPreview(initialGlobalPreviewForm(selection), { ...preview, expiresAt: "TEST invalid" }), { acknowledged: true, confirmText: preview.confirmText })
   assert.equal(globalConsentError(invalid, now), "PREVIEW_EXPIRED")
 })
+
+test("pnpm 10 preview keeps every shared package and its warning before consent", () => {
+  const displayed = displayGlobalPreview(initialGlobalPreviewForm(selection), {
+    ...preview, manager: "pnpm", managerVersion: "10.34.9",
+    sharedPackages: [{ name: "@test/neighbour", version: "2.0.0", linked: false },
+      { name: "test-linked", version: "1.0.0", linked: true }],
+    warningCodes: ["GLOBAL_CODE_EXECUTION", "PNPM_SHARED_GLOBAL_PROJECT"],
+  })
+  assert.deepEqual(displayed.preview.sharedPackages, [
+    { name: "@test/neighbour", version: "2.0.0", linked: false },
+    { name: "test-linked", version: "1.0.0", linked: true },
+  ])
+  assert.deepEqual(displayed.preview.warningCodes, ["GLOBAL_CODE_EXECUTION", "PNPM_SHARED_GLOBAL_PROJECT"])
+  assert.equal(globalConsentError(displayed, now), "RISK_NOT_ACKNOWLEDGED")
+})
+
+test("malformed shared package metadata is absent as a whole, never a partial list", () => {
+  for (const sharedPackages of [undefined, null, {}, "TEST", [null], [{}],
+    [{ name: 1, version: "1.0.0", linked: false }],
+    [{ name: "test-other", version: 1, linked: false }],
+    [{ name: "test-other", version: "1.0.0", linked: "false" }],
+    [{ name: "test-other", version: "1.0.0" }],
+    [{ name: "test-valid", version: "1.0.0", linked: false }, null]]) {
+    const displayed = displayGlobalPreview(initialGlobalPreviewForm(selection), {
+      ...preview, manager: "pnpm", managerVersion: "10.34.9", sharedPackages,
+    })
+    assert.equal(displayed.preview.sharedPackages, undefined)
+  }
+})
+
+test("shared packages are absent for npm and pnpm 11; an empty pnpm 10 list stays empty", () => {
+  for (const [manager, managerVersion] of [["npm", "10.9.9"], ["npm", "11.0.0"], ["pnpm", "11.22.0"]]) {
+    const displayed = displayGlobalPreview(initialGlobalPreviewForm(selection), {
+      ...preview, manager, managerVersion,
+      sharedPackages: [{ name: "test-other", version: "1.0.0", linked: false }],
+    })
+    assert.equal(displayed.preview.sharedPackages, undefined)
+  }
+  const displayed = displayGlobalPreview(initialGlobalPreviewForm(selection), {
+    ...preview, manager: "pnpm", managerVersion: "10.34.9", sharedPackages: [],
+  })
+  assert.deepEqual(displayed.preview.sharedPackages, [])
+})

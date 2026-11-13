@@ -1,4 +1,5 @@
 import { ApiError } from "../api/response.ts"
+import { parseGlobalSharedPackages } from "./global-types.ts"
 import type { GlobalAction, GlobalExecuteRequest, GlobalManager, GlobalPreview } from "@/lib/global-packages/global-types"
 
 export interface GlobalSelection { manager: GlobalManager; package: string; action: GlobalAction; targetVersion?: string }
@@ -16,7 +17,11 @@ export function changeGlobalSelection(form: GlobalPreviewForm, selection: Global
     ? form : initialGlobalPreviewForm(selection)
 }
 export function displayGlobalPreview(form: GlobalPreviewForm, preview: GlobalPreview): GlobalPreviewForm {
-  return { ...form, preview, acknowledged: false, confirmText: "" }
+  const parsed = { ...preview }
+  const sharedPackages = parseGlobalSharedPackages(preview)
+  if (sharedPackages === undefined) delete parsed.sharedPackages
+  else parsed.sharedPackages = sharedPackages
+  return { ...form, preview: parsed, acknowledged: false, confirmText: "" }
 }
 export function setGlobalConsent(form: GlobalPreviewForm, consent: Partial<GlobalConsent>): GlobalPreviewForm {
   return { ...form, acknowledged: consent.acknowledged ?? form.acknowledged, confirmText: consent.confirmText ?? form.confirmText }

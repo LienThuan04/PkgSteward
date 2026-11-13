@@ -938,7 +938,9 @@
       "npmApp": "PkgSteward npm",
       "npmAppValue": "{version}, unchanged",
       "repairWarning": "The items below are deleted permanently, not moved to the Recycle Bin, and cannot be undone. Close every terminal running npm before repairing. After the repair, terminals use the Node-bundled npm again.",
-      "repairTargets": "Items to delete"
+      "repairTargets": "Items to delete",
+      "sharedPackages": "Other packages in the same global project",
+      "linkedPackage": "Linked package"
     },
     "npmVersion": {
       "title": "npm version",
@@ -1071,7 +1073,8 @@
       "GLOBAL_CODE_EXECUTION": "Package lifecycle scripts can execute across the machine with your user privileges.",
       "GLOBAL_CONSUMERS_UNKNOWN": "Other programs and terminals using this package cannot all be detected.",
       "PROCESS_ESCAPE_RESIDUAL": "Package code may launch processes outside the tracked tree. After a crash, check Task Manager; process isolation is not guaranteed.",
-      "TERMINAL_NPM_SWITCH": "Every terminal that uses this Node's npm runs the new version from its next run; a terminal already running npm keeps the old version until it runs again. A project whose .npmrc changes the prefix may see a different version. PkgSteward keeps using the Node-bundled npm."
+      "TERMINAL_NPM_SWITCH": "Every terminal that uses this Node's npm runs the new version from its next run; a terminal already running npm keeps the old version until it runs again. A project whose .npmrc changes the prefix may see a different version. PkgSteward keeps using the Node-bundled npm.",
+      "PNPM_SHARED_GLOBAL_PROJECT": "pnpm 10 keeps all global packages in one project. This change reruns pnpm on that project. PkgSteward checks afterwards that the packages below are unchanged and reports any change. It cannot undo changes."
     }
   },
   "packageManagers": {
@@ -1188,7 +1191,7 @@
       "LOCKFILE_MISMATCH": "The project's lockfile does not match the selected package manager.",
       "TOOL_NOT_FOUND": "The installed tool was not found.",
       "TOOL_LAYOUT_UNSUPPORTED": "The tool installation layout is not recognized.",
-      "TOOL_VERSION_MISMATCH": "The installed tool version is unsupported or the backend Node.js does not meet the tool requirement. Supported tools are stable npm 10, npm 11, stable npm 12, stable pnpm 10 and pnpm 11 (global packages: pnpm 11 only); targets must match the installed major.",
+      "TOOL_VERSION_MISMATCH": "The installed tool version is unsupported or the backend Node.js does not meet the tool requirement. Supported tools are stable npm 10, npm 11, stable npm 12, stable pnpm 10 and pnpm 11; targets must match the installed major.",
       "CONFIG_UNSUPPORTED": "package.json or the project configuration cannot be edited here, including npm 12 with any npm-shrinkwrap.json, even alongside package-lock.json. No lockfile is converted, deleted or renamed.",
       "READERS_RUNNING": "A read task is running; try again later.",
       "RUNNING": "Another task is running; try again later.",

@@ -948,7 +948,9 @@
       "npmApp": "npm của PkgSteward",
       "npmAppValue": "{version}, không đổi",
       "repairWarning": "Các mục dưới đây bị xoá vĩnh viễn, không vào Thùng rác và không hoàn tác được. Đóng mọi terminal đang chạy npm trước khi sửa. Sau khi sửa, terminal dùng lại npm đi kèm Node.",
-      "repairTargets": "Mục sẽ bị xoá"
+      "repairTargets": "Mục sẽ bị xoá",
+      "sharedPackages": "Các gói khác trong cùng dự án global",
+      "linkedPackage": "Gói liên kết"
     },
     "npmVersion": {
       "title": "Phiên bản npm",
@@ -1081,7 +1083,8 @@
       "GLOBAL_CODE_EXECUTION": "Script vòng đời của gói có thể chạy trên toàn máy với quyền của bạn.",
       "GLOBAL_CONSUMERS_UNKNOWN": "Không thể phát hiện hết chương trình và terminal khác đang sử dụng gói này.",
       "PROCESS_ESCAPE_RESIDUAL": "Mã của gói có thể tạo tiến trình ngoài cây được theo dõi. Sau sự cố, kiểm tra Task Manager; không bảo đảm cô lập tiến trình.",
-      "TERMINAL_NPM_SWITCH": "Mọi terminal dùng npm của Node này sẽ chạy phiên bản mới từ lần chạy tiếp theo; terminal đang chạy npm giữ bản cũ đến khi chạy lại. Dự án có .npmrc đổi prefix có thể thấy bản khác. PkgSteward vẫn dùng npm đi kèm Node."
+      "TERMINAL_NPM_SWITCH": "Mọi terminal dùng npm của Node này sẽ chạy phiên bản mới từ lần chạy tiếp theo; terminal đang chạy npm giữ bản cũ đến khi chạy lại. Dự án có .npmrc đổi prefix có thể thấy bản khác. PkgSteward vẫn dùng npm đi kèm Node.",
+      "PNPM_SHARED_GLOBAL_PROJECT": "pnpm 10 giữ mọi gói global trong một dự án. Thao tác này chạy lại pnpm trên dự án đó. Sau đó, PkgSteward kiểm tra các gói bên dưới vẫn giữ nguyên và báo nếu có thay đổi. Ứng dụng không thể hoàn tác thay đổi."
     }
   },
   "packageManagers": {
@@ -1198,7 +1201,7 @@
       "LOCKFILE_MISMATCH": "Lockfile của project không khớp trình quản lý gói đã chọn.",
       "TOOL_NOT_FOUND": "Không tìm thấy công cụ đã cài.",
       "TOOL_LAYOUT_UNSUPPORTED": "Không nhận diện được bản cài của công cụ.",
-      "TOOL_VERSION_MISMATCH": "Phiên bản công cụ đã cài chưa được hỗ trợ hoặc Node.js của backend không đáp ứng yêu cầu của công cụ. Hỗ trợ npm 10 bản ổn định, npm 11, npm 12 bản ổn định, pnpm 10 bản ổn định và pnpm 11 (package global: chỉ pnpm 11); phiên bản đích phải cùng major với công cụ đã cài.",
+      "TOOL_VERSION_MISMATCH": "Phiên bản công cụ đã cài chưa được hỗ trợ hoặc Node.js của backend không đáp ứng yêu cầu của công cụ. Hỗ trợ npm 10 bản ổn định, npm 11, npm 12 bản ổn định, pnpm 10 bản ổn định và pnpm 11; phiên bản đích phải cùng major với công cụ đã cài.",
       "CONFIG_UNSUPPORTED": "Không thể sửa package.json hoặc cấu hình project tại đây, bao gồm npm 12 có bất kỳ npm-shrinkwrap.json nào, kể cả khi có package-lock.json. Không chuyển đổi, xóa hay đổi tên lockfile.",
       "READERS_RUNNING": "Đang có tác vụ đọc dữ liệu chạy; hãy thử lại sau.",
       "RUNNING": "Đang có tác vụ khác chạy; hãy thử lại sau.",
