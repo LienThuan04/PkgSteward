@@ -86,6 +86,40 @@ function snapshotIdentity(file: IRunnerFileIdentity): IRunnerFileIdentity {
   return { ...file, stat };
 }
 
+// pnpm 10 has nested identities in its project, links, ancillary entries and
+// bin slots. Strip stat methods before retaining a deep immutable snapshot.
+function pnpm10Data(value: unknown, compare = false): unknown {
+  if (Array.isArray(value)) {
+    const items = value.map((v: unknown) => pnpm10Data(v, compare));
+    return compare
+      ? items.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+      : items;
+  }
+  if (value && typeof value === 'object') {
+    if ('path' in value && 'stat' in value) {
+      const file = value as IRunnerFileIdentity & { pnpm10Kind?: string };
+      const pnpm10Kind =
+        file.pnpm10Kind ??
+        (file.stat.isSymbolicLink?.()
+          ? 'link'
+          : file.stat.isFile?.()
+            ? 'file'
+            : file.stat.isDirectory?.()
+              ? 'directory'
+              : 'other');
+      return compare
+        ? { ...identityFacts(file), pnpm10Kind }
+        : { ...snapshotIdentity(file), pnpm10Kind };
+    }
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, v]) => [name, pnpm10Data(v, compare)]),
+    );
+  }
+  return value;
+}
+
 function snapshotLocation(location: IGlobalLocation): IGlobalLocation {
   return {
     ...location,
@@ -98,6 +132,9 @@ function snapshotLocation(location: IGlobalLocation): IGlobalLocation {
       file: snapshotIdentity(identity.file),
     })),
     ...(location.pnpm ? { pnpm: snapshotPnpmConfig(location.pnpm) } : {}),
+    ...(location.pnpm10
+      ? { pnpm10: pnpm10Data(location.pnpm10) as IGlobalLocation['pnpm10'] }
+      : {}),
   };
 }
 
@@ -188,6 +225,13 @@ export function snapshotGlobalPreviewFacts(
     locations: facts.locations?.map(snapshotLocation),
     current: facts.current ? snapshotPackage(facts.current) : null,
     ...(facts.npm ? { npm: snapshotNpm(facts.npm) } : {}),
+    ...(facts.pnpm10Inventory
+      ? {
+          pnpm10Inventory: pnpm10Data(
+            facts.pnpm10Inventory,
+          ) as IGlobalPreviewFacts['pnpm10Inventory'],
+        }
+      : {}),
     ...(facts.pnpmInventory
       ? {
           pnpmInventory: {
@@ -292,6 +336,7 @@ function locationFacts(location: IGlobalLocation) {
       }))
       .sort((a, b) => a.file.path.localeCompare(b.file.path)),
     pnpm: location.pnpm ? pnpmConfigFacts(location.pnpm) : undefined,
+    pnpm10: location.pnpm10 ? pnpm10Data(location.pnpm10, true) : undefined,
   };
 }
 
@@ -379,6 +424,9 @@ function comparable(facts: IGlobalPreviewFacts) {
       .sort((a, b) => a.manager.localeCompare(b.manager)),
     current: current ? packageFacts(current) : null,
     npm: facts.npm ? comparableNpm(facts.npm) : undefined,
+    pnpm10Inventory: facts.pnpm10Inventory
+      ? pnpm10Data(facts.pnpm10Inventory, true)
+      : undefined,
     target: target ? { ...target, bins: sortBins(target.bins) } : null,
     binOwners: [...facts.binOwners].sort((a, b) =>
       a.name.localeCompare(b.name),
@@ -442,6 +490,14 @@ export function createGlobalPreview(
     : target
       ? assessGlobalVersionChange(current!.version, target.version)
       : [];
+  const sharedPackages =
+    location.pnpm10 && facts.pnpm10Inventory
+      ? facts.pnpm10Inventory.project.dependencies
+          .filter((d) => d.name !== packageName)
+          .map(({ name, version, linked }) => ({ name, version, linked }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : undefined;
+  if (sharedPackages?.length) warnings.push('PNPM_SHARED_GLOBAL_PROJECT');
   const preview: IGlobalPreview = {
     previewId,
     createdAt: now.toISOString(),
@@ -489,6 +545,7 @@ export function createGlobalPreview(
       packageName,
       target?.version ?? null,
     ),
+    ...(sharedPackages ? { sharedPackages } : {}),
     ...(npm
       ? {
           npm: {

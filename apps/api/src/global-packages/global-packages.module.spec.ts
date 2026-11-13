@@ -315,20 +315,19 @@ describe('GlobalPackagesModule runtime bindings', () => {
     },
   );
 
-  it('refuses a freshly resolved pnpm 10 before registering it for probes or launch', async () => {
-    const b = bindings();
-    const runtime = createGlobalPackagesRuntime(b.input);
-    const resolve = jest
-      .spyOn(runnerTools, 'resolveRunnerTool')
-      .mockResolvedValue(testTool('pnpm', '10.34.9'));
-    try {
-      await expect(
-        runtime.resolveTool('pnpm', new AbortController().signal),
-      ).rejects.toMatchObject({
-        details: { reason: 'TOOL_VERSION_MISMATCH' },
-      });
-      const tool = testTool('pnpm', '10.34.9');
-      expect(() =>
+  it.each(['10.34.9', '11.22.0'])(
+    'registers stable pnpm %s for launch',
+    async (version) => {
+      const b = bindings();
+      const runtime = createGlobalPackagesRuntime(b.input);
+      const tool = testTool('pnpm', version);
+      const resolve = jest
+        .spyOn(runnerTools, 'resolveRunnerTool')
+        .mockResolvedValue(tool);
+      try {
+        await expect(
+          runtime.resolveTool('pnpm', new AbortController().signal),
+        ).resolves.toEqual(tool);
         runtime.launch(
           {
             file: tool.file,
@@ -341,13 +340,50 @@ describe('GlobalPackagesModule runtime bindings', () => {
             onOutput: jest.fn(),
             onExit: jest.fn(),
           },
-        ),
-      ).toThrow();
-      expect(b.launchProcess).not.toHaveBeenCalled();
-    } finally {
-      resolve.mockRestore();
-    }
-  });
+        );
+        expect(b.launchProcess).toHaveBeenCalledTimes(1);
+      } finally {
+        resolve.mockRestore();
+      }
+    },
+  );
+
+  it.each(['9.15.9', '12.0.0', '10.34.9-rc.1'])(
+    'refuses pnpm %s before registration',
+    async (version) => {
+      const b = bindings();
+      const runtime = createGlobalPackagesRuntime(b.input);
+      const resolve = jest
+        .spyOn(runnerTools, 'resolveRunnerTool')
+        .mockResolvedValue(testTool('pnpm', version));
+      try {
+        await expect(
+          runtime.resolveTool('pnpm', new AbortController().signal),
+        ).rejects.toMatchObject({
+          details: { reason: 'TOOL_VERSION_MISMATCH' },
+        });
+        const tool = testTool('pnpm', version);
+        expect(() =>
+          runtime.launch(
+            {
+              file: tool.file,
+              args: [tool.entry!, 'list'],
+              cwd: TEST_PATHS.cwd,
+              env: {},
+            },
+            {
+              signal: new AbortController().signal,
+              onOutput: jest.fn(),
+              onExit: jest.fn(),
+            },
+          ),
+        ).toThrow();
+        expect(b.launchProcess).not.toHaveBeenCalled();
+      } finally {
+        resolve.mockRestore();
+      }
+    },
+  );
 
   it('returns SERVICE_UNAVAILABLE on non-Windows activity starts without IO', async () => {
     const b = bindings();

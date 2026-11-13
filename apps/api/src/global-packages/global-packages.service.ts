@@ -62,6 +62,9 @@ import {
 import { deleteTarget } from '@/file-ops/deletion/file-deleter';
 import type { IGlobalInventoryResult } from '@/global-packages/discovery/global-inventory';
 import { assessPnpmGlobalRegistryPolicy } from '@/global-packages/config/pnpm-global-config';
+import { assertPnpm10GlobalMutable } from './policy/pnpm10-global-policy';
+import { verifyPnpm10GlobalPostcondition } from './policy/pnpm10-global-postcondition';
+import { readPnpm10GlobalInventory } from './discovery/pnpm10-global-inventory';
 import { GlobalRegistry } from '@/global-packages/registry/global-registry';
 import {
   assessGlobalRegistryPolicy,
@@ -322,6 +325,7 @@ export class GlobalPackagesService
         packageName: active.request!.package,
         exactVersion: finalFacts.target?.version ?? null,
         publicRegistry: finalFacts.registryChangeAllowed === true,
+        pnpm10Inventory: finalFacts.pnpm10Inventory,
       });
       activity.checkpoint();
       // Launch only runs tools registered by a fresh verified resolution; static pnpm
@@ -683,7 +687,7 @@ export class GlobalPackagesService
     request: IGlobalPreviewRequest,
     signal: AbortSignal,
   ): Promise<IGlobalRegistryInput> {
-    const config = location.pnpm;
+    const config = location.pnpm10 ?? location.pnpm;
     if (!config) throw fail('CONFIG_UNSUPPORTED');
     const identities: IGlobalResolvedLocation['configIdentities'] = [];
     const budget = { remaining: GLOBAL_CONFIG_TOTAL_LIMIT };
@@ -737,6 +741,16 @@ export class GlobalPackagesService
     current: IGlobalPackageFacts,
   ): void {
     if (location.manager !== 'pnpm') return;
+    if (location.pnpm10) {
+      assertPnpm10GlobalMutable({
+        location,
+        inventory,
+        packageName: request.package,
+        action: request.action,
+      });
+      location.storeDir = inventory.pnpm10Inventory!.project.storeDir;
+      return;
+    }
     const group = current.pnpmGroup;
     if (!group || !location.pnpm || !inventory.pnpmInventory)
       throw fail('INVENTORY_FAILED');
@@ -1115,6 +1129,7 @@ export class GlobalPackagesService
         .changeAllowed,
       locations,
       pnpmInventory: inventory.pnpmInventory,
+      pnpm10Inventory: inventory.pnpm10Inventory,
     });
   }
 
@@ -1371,63 +1386,87 @@ export class GlobalPackagesService
           active.refreshed = true;
         } else {
           // Cleanup uses its own signal: cancelling mutation must not cancel verification.
-          const result = await readGlobalInventory(active.location!, {
+          const deps = {
             fs: this.runtime.fs,
             environment: this.runtime.environment,
             signal: new AbortController().signal,
             spawn: this.probeFor(active.activity),
-          });
+          };
+          const result = active.location!.pnpm10
+            ? await readPnpm10GlobalInventory(active.location!, deps, {
+                allowMissingBinDir: active.request!.action === 'remove',
+              })
+            : await readGlobalInventory(active.location!, deps);
           const request = active.request!;
-          if (
-            request.manager === 'pnpm' &&
-            (!result.ownershipComplete ||
-              result.pnpmInventory?.ownershipComplete !== true)
-          )
-            throw fail('INVENTORY_FAILED');
-          const row = result.packages.find(
-            (entry) => entry.name === request.package,
-          );
-          const facts = result.facts.find(
-            (entry) => entry.name === request.package,
-          );
-          const bins = (value: readonly { name: string; target: string }[]) =>
-            [...value].sort((a, b) => a.name.localeCompare(b.name));
-          active.postcondition =
-            request.action === 'remove'
-              ? !row && !facts
-              : !!row &&
-                !!facts &&
-                (request.manager !== 'pnpm' ||
-                  (result.packages.filter(
-                    (entry) => entry.name === request.package,
-                  ).length === 1 &&
-                    result.facts.filter(
+          if (active.location!.pnpm10) {
+            active.postcondition = verifyPnpm10GlobalPostcondition(
+              active.facts!,
+              result,
+              request,
+            );
+            active.refreshed = true;
+          } else {
+            if (
+              request.manager === 'pnpm' &&
+              (!result.ownershipComplete ||
+                result.pnpmInventory?.ownershipComplete !== true)
+            )
+              throw fail('INVENTORY_FAILED');
+            const row = result.packages.find(
+              (entry) => entry.name === request.package,
+            );
+            const facts = result.facts.find(
+              (entry) => entry.name === request.package,
+            );
+            const bins = (value: readonly { name: string; target: string }[]) =>
+              [...value].sort((a, b) => a.name.localeCompare(b.name));
+            active.postcondition =
+              request.action === 'remove'
+                ? !row && !facts
+                : !!row &&
+                  !!facts &&
+                  (request.manager !== 'pnpm' ||
+                    (result.packages.filter(
                       (entry) => entry.name === request.package,
-                    ).length === 1)) &&
-                row.status === 'manageable' &&
-                row.version === active.facts?.target?.version &&
-                facts.version === active.facts?.target?.version &&
-                isDeepStrictEqual(
-                  bins(row.bins),
-                  bins(active.facts?.target?.bins ?? []),
-                ) &&
-                isDeepStrictEqual(
-                  bins(facts.bins),
-                  bins(active.facts?.target?.bins ?? []),
-                );
-          active.refreshed = true;
+                    ).length === 1 &&
+                      result.facts.filter(
+                        (entry) => entry.name === request.package,
+                      ).length === 1)) &&
+                  row.status === 'manageable' &&
+                  row.version === active.facts?.target?.version &&
+                  facts.version === active.facts?.target?.version &&
+                  isDeepStrictEqual(
+                    bins(row.bins),
+                    bins(active.facts?.target?.bins ?? []),
+                  ) &&
+                  isDeepStrictEqual(
+                    bins(facts.bins),
+                    bins(active.facts?.target?.bins ?? []),
+                  );
+            active.refreshed = true;
+          }
         }
       } catch {
         /* Explicit cleanup retry only, never another mutation. */
       }
     }
     job.refreshRequired = changed && !active.refreshed;
+    if (
+      active.location?.pnpm10 &&
+      changed &&
+      active.refreshed &&
+      !active.postcondition &&
+      (job.status === 'completed' || job.failureCode === 'POSTCONDITION_FAILED')
+    )
+      job.refreshRequired = true;
     if (!job.terminationVerified) {
       job.status = 'termination_failed';
       job.failureCode = 'TERMINATION_UNCONFIRMED';
     } else if (job.status === 'completed' && job.refreshRequired) {
       job.status = 'failed';
-      job.failureCode = 'INVENTORY_FAILED';
+      job.failureCode = active.location?.pnpm10
+        ? 'POSTCONDITION_FAILED'
+        : 'INVENTORY_FAILED';
     } else if (job.status === 'completed' && changed && !active.postcondition) {
       job.status = 'failed';
       job.failureCode = 'POSTCONDITION_FAILED';
@@ -1447,7 +1486,12 @@ export class GlobalPackagesService
         job.failureCode = 'AUDIT_WRITE_FAILED';
         if (job.status === 'completed') job.status = 'failed';
       }
-      if (job.terminationVerified && !job.refreshRequired && job.auditWritten) {
+      if (
+        job.terminationVerified &&
+        (!job.refreshRequired ||
+          (active.location?.pnpm10 && active.refreshed)) &&
+        job.auditWritten
+      ) {
         this.runtime.gate.leave(active.token);
         job.gateHeld = false;
       }

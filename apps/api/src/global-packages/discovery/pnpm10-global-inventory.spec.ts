@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { win32 } from 'node:path';
+import { parse, stringify } from 'yaml';
 import {
   readPnpm10GlobalInventory,
   pnpm10DepPathToFilename,
@@ -75,6 +76,22 @@ describe('pnpm 10 static direct-dependency inventory', () => {
     expect(r.ownershipComplete).toBe(true);
     expect(r.pnpm10Inventory?.project.missingPaths).toContain(P10.root);
   });
+  it('accepts a missing separate bin directory only during remove postcondition verification', async () => {
+    const h = await pnpm10InventoryFixture(9);
+    const binDir = 'D:\\TEST\\separate-bin';
+    h.location.binDir = binDir;
+    h.location.pnpm10 = { ...h.location.pnpm10, binDir };
+    await expectGlobalReason(
+      () => readPnpm10GlobalInventory(h.location, h.deps),
+      'INVENTORY_FAILED',
+    );
+    const r = await readPnpm10GlobalInventory(h.location, h.deps, {
+      allowMissingBinDir: true,
+    });
+    expect(r.pnpm10Inventory?.binSlots).toEqual([]);
+    expect(r.pnpm10Inventory?.project.missingPaths).toContain(binDir);
+    expect(r.ownershipComplete).toBe(true);
+  });
   it.each([
     'manifest',
     'wanted',
@@ -83,6 +100,7 @@ describe('pnpm 10 static direct-dependency inventory', () => {
     'workspace',
     'extra-link',
     'duplicate',
+    'resolution-shape',
   ])('refuses inconsistent metadata: %s', async (kind) => {
     const h = await pnpm10InventoryFixture(2);
     const file = (suffix: string) => `${P10.root}\\${suffix}`;
@@ -118,6 +136,14 @@ describe('pnpm 10 static direct-dependency inventory', () => {
       h.put(file('package.json'), {
         text: '{"dependencies":{},"dependencies":{}}',
       });
+    if (kind === 'resolution-shape')
+      for (const relative of ['pnpm-lock.yaml', 'node_modules/.pnpm/lock.yaml'])
+        h.put(win32.join(P10.root, relative), {
+          text: h.snapshot.files[relative].replace(
+            'resolution: {integrity:',
+            'resolution: {tarball: [], integrity:',
+          ),
+        });
     await expectGlobalReason(
       () => readPnpm10GlobalInventory(h.location, h.deps),
       'INVENTORY_FAILED',
@@ -302,20 +328,55 @@ describe('pnpm 10 static direct-dependency inventory', () => {
     ).not.toThrow();
   });
 
-  it('refuses ambiguous package resolutions even when both lockfiles agree', async () => {
-    const h = await pnpm10InventoryFixture(1);
-    for (const relative of ['pnpm-lock.yaml', 'node_modules/.pnpm/lock.yaml'])
-      h.put(win32.join(P10.root, relative), {
-        text: h.snapshot.files[relative].replace(
-          'resolution: {integrity:',
-          'resolution: {directory: ../../foreign, integrity:',
-        ),
+  it.each([
+    'file:../tool',
+    'npm:other@7.7.3',
+    'git+https://example.test/tool.git',
+    'https://example.test/tool.tgz',
+    'resolution',
+  ])(
+    'keeps other rows beside unsupported direct dependency %s',
+    async (kind) => {
+      const h = await pnpm10InventoryFixture(2);
+      const manifest = JSON.parse(h.snapshot.files['package.json']) as {
+        dependencies: Record<string, string>;
+      };
+      const spec = kind === 'resolution' ? manifest.dependencies.semver : kind;
+      manifest.dependencies.semver = spec;
+      h.put(`${P10.root}\\package.json`, { text: JSON.stringify(manifest) });
+      for (const relative of ['pnpm-lock.yaml', 'node_modules/.pnpm/lock.yaml'])
+        h.put(win32.join(P10.root, relative), {
+          text: (() => {
+            const lock = parse(h.snapshot.files[relative]) as {
+              importers: {
+                '.': { dependencies: Record<string, { specifier: string }> };
+              };
+              packages: Record<string, { resolution: Record<string, string> }>;
+            };
+            lock.importers['.'].dependencies.semver.specifier = spec;
+            if (kind === 'resolution')
+              lock.packages['semver@7.7.3'].resolution.tarball =
+                'https://example.test/tool.tgz';
+            return stringify(lock);
+          })(),
+        });
+      const result = await readPnpm10GlobalInventory(h.location, h.deps);
+      expect(result.packages.find((r) => r.name === 'semver')).toMatchObject({
+        status: 'invalid',
+        reason: 'INVENTORY_FAILED',
       });
-    await expectGlobalReason(
-      () => readPnpm10GlobalInventory(h.location, h.deps),
-      'INVENTORY_FAILED',
-    );
-  });
+      expect(result.packages.find((r) => r.name === 'is-number')).toMatchObject(
+        { status: 'manageable' },
+      );
+      expect(result.ownershipComplete).toBe(false);
+      expect(result.facts.some((f) => f.name === 'semver')).toBe(false);
+      expect(
+        result.pnpm10Inventory?.project.dependencies.find(
+          (d) => d.name === 'semver',
+        )?.linkIdentity,
+      ).toBeDefined();
+    },
+  );
 
   it('refuses wanted/current lock settings that disagree', async () => {
     const h = await pnpm10InventoryFixture(1);
@@ -330,6 +391,74 @@ describe('pnpm 10 static direct-dependency inventory', () => {
       'INVENTORY_FAILED',
     );
   });
+  it.each([
+    [
+      'file:../tool',
+      'file:../tool',
+      { directory: '../tool', type: 'directory' },
+    ],
+    ['npm:other@7.7.3', 'other@7.7.3', { integrity: 'sha512-TEST==' }],
+    [
+      'git+https://example.test/tool.git',
+      'https://example.test/tool/TEST',
+      { repo: 'https://example.test/tool.git', commit: 'TEST', type: 'git' },
+    ],
+    [
+      'latest',
+      'https://example.test/tool.tgz',
+      { tarball: 'https://example.test/tool.tgz' },
+    ],
+  ] as const)(
+    'pins unsupported non-semver reference %s without opening external targets',
+    async (spec, ref, resolution) => {
+      const h = await pnpm10InventoryFixture(2);
+      const manifest = JSON.parse(h.snapshot.files['package.json']) as {
+        dependencies: Record<string, string>;
+      };
+      manifest.dependencies.semver = spec;
+      h.put(`${P10.root}\\package.json`, { text: JSON.stringify(manifest) });
+      h.put(`${P10.root}\\node_modules\\semver`, {
+        link: true,
+        real: 'E:\\TEST\\external-tool',
+      });
+      for (const relative of [
+        'pnpm-lock.yaml',
+        'node_modules/.pnpm/lock.yaml',
+      ]) {
+        const lock = parse(h.snapshot.files[relative]) as {
+          importers: {
+            '.': {
+              dependencies: Record<
+                string,
+                { specifier: string; version: string }
+              >;
+            };
+          };
+          packages: Record<string, unknown>;
+          snapshots: Record<string, unknown>;
+        };
+        lock.importers['.'].dependencies.semver = {
+          specifier: spec,
+          version: ref,
+        };
+        delete lock.packages['semver@7.7.3'];
+        delete lock.snapshots['semver@7.7.3'];
+        lock.packages[ref] = { resolution };
+        lock.snapshots[ref] = {};
+        h.put(win32.join(P10.root, relative), { text: stringify(lock) });
+      }
+      const result = await readPnpm10GlobalInventory(h.location, h.deps);
+      expect(result.packages.find((r) => r.name === 'semver')).toMatchObject({
+        status: 'invalid',
+        reason: 'INVENTORY_FAILED',
+      });
+      expect(result.packages.find((r) => r.name === 'is-number')?.status).toBe(
+        'manageable',
+      );
+      expect(h.open.mock.calls.some(([p]) => p.startsWith('E:'))).toBe(false);
+      expect(h.lstat.mock.calls.some(([p]) => p.startsWith('E:'))).toBe(false);
+    },
+  );
   it('derives scoped, peer-suffixed and hashed long virtual-store names from pnpm source', async () => {
     expect(pnpm10DepPathToFilename('@test/tool@1.0.0', 60)).toBe(
       '@test+tool@1.0.0',

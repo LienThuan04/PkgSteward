@@ -20,6 +20,14 @@ import type { GlobalReasonCode } from '@/global-packages/interfaces/global-packa
 import { buildRunnerEnvironment } from '@/npm-runner/toolchain/runner-environment';
 import { isSupportedRunnerVersion } from '@/npm-runner/toolchain/runner-version-policy';
 import type { IPnpmGlobalConfig } from '@/global-packages/interfaces/pnpm-global.types';
+import type {
+  IPnpm10GlobalConfig,
+  IPnpm10GlobalInventoryFacts,
+} from '../interfaces/pnpm10-global.types';
+import {
+  buildPnpm10GlobalCommand,
+  buildPnpm10GlobalQuery,
+} from './pnpm10-global-command';
 
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org';
 // pnpm 11.22.0:214230-214250,272082: auto-approval ignores non-TTY consent.
@@ -58,11 +66,17 @@ export const isGlobalExactVersion = (value: unknown): value is string =>
   semver.valid(value) !== null;
 
 /**
- * The runner accepts pnpm 10, but global package management reads and writes the pnpm 11
- * global layout only; pnpm 10 keeps a different one and stays refused here.
+ * pnpm 10 and 11 layouts have global adapters. pnpm 11 keeps its earlier gate
+ * (prereleases included, as in the runner policy); pnpm 10 is stable-only.
  */
-export const isPnpmGlobalVersion = (version: string): boolean =>
-  semver.parse(version)?.major === 11;
+export const isPnpmGlobalVersion = (version: string): boolean => {
+  const parsed = semver.parse(version);
+  return (
+    !!parsed &&
+    (parsed.major === 11 ||
+      (parsed.major === 10 && parsed.prerelease.length === 0))
+  );
+};
 
 const hasControl = (value: string): boolean =>
   Array.from(value).some(
@@ -113,7 +127,7 @@ function assertLauncher(
   if (!isGlobalAbsolutePath(cwd)) return fail('CONFIG_UNSUPPORTED');
 }
 
-function environmentFor(
+export function environmentFor(
   snapshot: Readonly<NodeJS.ProcessEnv>,
   tool: IRunnerTool,
   manager: GlobalManager,
@@ -157,6 +171,7 @@ export interface IGlobalQueryInput {
   captured: GlobalEnvironmentCapture;
   query: GlobalQuery | 'list';
   pnpm?: IPnpmGlobalConfig;
+  pnpm10?: IPnpm10GlobalConfig;
 }
 export interface IGlobalMutationInput {
   location: IGlobalResolvedLocation;
@@ -165,12 +180,16 @@ export interface IGlobalMutationInput {
   packageName: string;
   exactVersion: string | null;
   publicRegistry: boolean;
+  pnpm10Inventory?: IPnpm10GlobalInventoryFacts;
 }
 
 export function buildGlobalQuery(input: IGlobalQueryInput): IGlobalCommand {
   const { manager, tool, cwd, query } = input;
   assertLauncher(manager, tool, cwd);
-  if (manager === 'pnpm') return buildPnpmGlobalQuery(input);
+  if (manager === 'pnpm')
+    return semver.parse(tool.version)?.major === 10
+      ? buildPnpm10GlobalQuery(input)
+      : buildPnpmGlobalQuery(input);
   const captured = captureGlobalEnvironment(input.captured);
   const paths: [string, string | undefined][] = [
     ['--prefix', captured.npm_config_prefix],
@@ -218,7 +237,10 @@ export function buildGlobalCommand(
     return fail('INVALID_PACKAGE_SPEC');
   if (action === 'change' && !input.publicRegistry)
     return fail('REGISTRY_CONFIG_UNSUPPORTED');
-  if (manager === 'pnpm') return buildPnpmGlobalCommand(input);
+  if (manager === 'pnpm')
+    return semver.parse(tool.version)?.major === 10
+      ? buildPnpm10GlobalCommand(input)
+      : buildPnpmGlobalCommand(input);
   const paths = [
     location.prefix,
     location.userConfig,

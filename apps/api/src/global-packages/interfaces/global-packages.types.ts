@@ -67,6 +67,7 @@ export const GLOBAL_WARNING_CODES = [
   'GLOBAL_CONSUMERS_UNKNOWN',
   'PROCESS_ESCAPE_RESIDUAL',
   'TERMINAL_NPM_SWITCH',
+  'PNPM_SHARED_GLOBAL_PROJECT',
 ] as const;
 export type GlobalWarningCode = (typeof GLOBAL_WARNING_CODES)[number];
 
@@ -167,6 +168,7 @@ export interface IGlobalPreview {
   risk: IRisk;
   confirmText: string;
   npm?: IGlobalNpmPreview;
+  sharedPackages?: { name: string; version: string; linked: boolean }[];
 }
 export interface IGlobalJobStart extends IGlobalActivityRequest {
   jobId: string;

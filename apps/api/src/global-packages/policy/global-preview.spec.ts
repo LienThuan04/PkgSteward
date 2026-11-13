@@ -28,6 +28,115 @@ import {
   pnpmPreviewFacts,
 } from '@/global-packages/__fixtures__/pnpm11/inventory';
 import type { IPnpmGlobalGroupFacts } from '@/global-packages/interfaces/pnpm-global.types';
+import { pnpm10InventoryFixture } from '../__fixtures__/pnpm10/inventory';
+import { readPnpm10GlobalInventory } from '../discovery/pnpm10-global-inventory';
+
+describe('pnpm 10 preview facts', () => {
+  async function facts10() {
+    const h = await pnpm10InventoryFixture(6);
+    const r = await readPnpm10GlobalInventory(h.location, h.deps);
+    return {
+      location: h.location,
+      current: r.facts.find((f) => f.name === 'semver')!,
+      target: null,
+      binOwners: r.binOwners,
+      pnpm10Inventory: r.pnpm10Inventory!,
+    };
+  }
+  it('snapshots executable stat methods safely and exposes sorted shared packages', async () => {
+    const facts = await facts10();
+    const snap = snapshotGlobalPreviewFacts(facts);
+    facts.pnpm10Inventory.project.dependencies[0].spec = 'TEST changed';
+    expect(snap.pnpm10Inventory.project.dependencies[0].spec).not.toBe(
+      'TEST changed',
+    );
+    const preview = createGlobalPreview(
+      TEST_PREVIEW_ID,
+      testRequest({ manager: 'pnpm', package: 'semver' }),
+      snap,
+      testClock().now(),
+    );
+    expect(preview.sharedPackages).toEqual(
+      snap.pnpm10Inventory.project.dependencies
+        .filter((d) => d.name !== 'semver')
+        .map(({ name, version, linked }) => ({ name, version, linked }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    expect(preview.warningCodes).toContain('PNPM_SHARED_GLOBAL_PROJECT');
+    expect(preview.risk).toEqual(getGlobalRisk());
+  });
+  it.each([
+    'selector',
+    'absence',
+    'config',
+    'store',
+    'file',
+    'neighbour',
+    'link',
+    'slot',
+    'shim',
+    'ancillary',
+  ])('refuses pnpm 10 drift: %s', async (kind) => {
+    const expected = snapshotGlobalPreviewFacts(await facts10());
+    const actual = structuredClone(expected);
+    const inventory = actual.pnpm10Inventory;
+    if (kind === 'selector')
+      actual.location.pnpm10.selectors = { HOME: 'E:\\TEST\\changed' };
+    if (kind === 'absence') actual.location.pnpm10.missingConfigPaths = [];
+    if (kind === 'config')
+      actual.location.pnpm10.configIdentities = [
+        ...actual.location.pnpm10.configIdentities,
+        inventory.project.files[0],
+      ];
+    if (kind === 'store') inventory.project.storeDir = 'E:\\TEST\\changed';
+    if (kind === 'file') inventory.project.files[0].sha256 = 'changed';
+    if (kind === 'neighbour')
+      inventory.project.dependencies[0].spec = 'changed';
+    if (kind === 'link')
+      inventory.project.dependencies[0].realPath = 'E:\\TEST\\changed';
+    if (kind === 'slot') inventory.binSlots[0].name = 'changed';
+    if (kind === 'shim')
+      inventory.project.dependencies.find(
+        (d) => d.shims.length,
+      )!.shims[0].sha256 = 'changed';
+    if (kind === 'ancillary')
+      inventory.project.ancillary[0].realPath = 'E:\\TEST\\changed';
+    await expectGlobalReason(
+      () => assertGlobalPreviewUnchanged(expected, actual),
+      'PREVIEW_CHANGED',
+    );
+  });
+  it('ignores order and atime but retains the byte cap', async () => {
+    const expected = snapshotGlobalPreviewFacts(await facts10());
+    const actual = structuredClone(expected);
+    actual.pnpm10Inventory.project.dependencies = [
+      ...actual.pnpm10Inventory.project.dependencies,
+    ].reverse();
+    actual.pnpm10Inventory.binSlots[0].identity.stat.atimeMs = 999;
+    expect(() => assertGlobalPreviewUnchanged(expected, actual)).not.toThrow();
+    const preview = createGlobalPreview(
+      TEST_PREVIEW_ID,
+      testRequest({ manager: 'pnpm', package: 'semver' }),
+      expected,
+      testClock().now(),
+    );
+    actual.pnpm10Inventory.project.dependencies[0].spec = 'x'.repeat(
+      GLOBAL_PREVIEW_BYTES,
+    );
+    const store = new GlobalPreviewStore(testClock());
+    expect(() => store.put(preview, actual)).toThrow();
+  });
+  it('pins identity kinds as data before stat methods are stripped', async () => {
+    const expected = snapshotGlobalPreviewFacts(await facts10());
+    const actual = await facts10();
+    actual.pnpm10Inventory.binSlots[0].identity.stat.isSymbolicLink = () =>
+      true;
+    await expectGlobalReason(
+      () => assertGlobalPreviewUnchanged(expected, actual),
+      'PREVIEW_CHANGED',
+    );
+  });
+});
 
 describe('M7 preview construction and server confirmation', () => {
   it('builds a remove preview with shared high risk and declared bin diff', () => {

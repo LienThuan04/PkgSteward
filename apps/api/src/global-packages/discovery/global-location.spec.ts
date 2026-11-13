@@ -27,6 +27,7 @@ import {
   pnpmLocation,
 } from '@/global-packages/__fixtures__/pnpm11/facts';
 import { readGlobalInventory } from '@/global-packages/discovery/global-inventory';
+import { config10Fixture, P10 } from '../__fixtures__/pnpm10/config';
 
 describe('bounded cancellable probe boundary', () => {
   const command: IGlobalCommand = {
@@ -650,8 +651,8 @@ describe.each(TEST_NPM_VERSIONS)('verified location (npm %s)', (v) => {
     expect(h.spawn).not.toHaveBeenCalled();
   });
 
-  it.each(['10.0.0', '10.34.9'])(
-    'refuses pnpm %s: its global layout is not supported yet',
+  it.each(['9.15.9', '12.0.0', '10.34.9-rc.1'])(
+    'refuses unsupported pnpm %s before any config reads',
     async (version) => {
       const h = setupPnpm();
       jest
@@ -667,6 +668,76 @@ describe.each(TEST_NPM_VERSIONS)('verified location (npm %s)', (v) => {
       await expectGlobalReason(
         () => discoverGlobalLocation('pnpm', h.deps),
         'TOOL_VERSION_MISMATCH',
+      );
+      expect(h.spawn).not.toHaveBeenCalled();
+      expect(h.open).not.toHaveBeenCalled();
+    },
+  );
+
+  function setup10(patch: NodeJS.ProcessEnv = {}) {
+    const h = setup();
+    const f = config10Fixture(patch);
+    h.deps.fs = f.fs;
+    h.deps.environment = f.environment;
+    jest
+      .mocked(runnerTools.resolveRunnerTool)
+      .mockImplementation((manager) =>
+        Promise.resolve(
+          testTool(
+            manager as 'npm' | 'pnpm',
+            manager === 'pnpm' ? '10.34.9' : undefined,
+          ),
+        ),
+      );
+    return { ...h, ...f, deps: h.deps };
+  }
+  it('discovers pnpm 10 default H=B containing G and S, with store unproven until inventory', async () => {
+    const h = setup10();
+    const location = await discoverGlobalLocation('pnpm', h.deps);
+    expect(location).toMatchObject({
+      manager: 'pnpm',
+      globalRoot: P10.root,
+      globalDir: `${P10.home}\\global`,
+      binDir: P10.home,
+      storeDir: null,
+      pnpm10: { homeDir: P10.home },
+      userConfig: `${P10.profile}\\.npmrc`,
+    });
+    expect(location.pnpm).toBeUndefined();
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+  it.each(['bin-in-root', 'root-in-bin', 'store-in-root', 'store-in-bin'])(
+    'refuses pnpm 10 overlap %s',
+    async (kind) => {
+      const h = setup10({
+        ...(kind === 'bin-in-root'
+          ? {
+              npm_config_global_bin_dir: `${P10.root}\\bin`,
+              PATH: `${P10.root}\\bin`,
+            }
+          : {}),
+        ...(kind === 'root-in-bin'
+          ? {
+              npm_config_global_bin_dir: `${P10.home}\\global`,
+              PATH: `${P10.home}\\global`,
+            }
+          : {}),
+        ...(kind === 'store-in-root'
+          ? { npm_config_store_dir: `${P10.root}\\store` }
+          : {}),
+        ...(kind === 'store-in-bin'
+          ? {
+              npm_config_global_bin_dir: 'D:\\TEST\\other',
+              PATH: 'D:\\TEST\\other',
+              npm_config_store_dir: 'D:\\TEST\\other\\store',
+            }
+          : {}),
+      });
+      for (const p of h.deps.environment.PATH!.split(';'))
+        h.put(p, { directory: true });
+      await expectGlobalReason(
+        () => discoverGlobalLocation('pnpm', h.deps),
+        'LOCATION_AMBIGUOUS',
       );
       expect(h.spawn).not.toHaveBeenCalled();
     },

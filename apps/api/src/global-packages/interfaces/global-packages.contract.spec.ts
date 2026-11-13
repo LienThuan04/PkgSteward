@@ -96,6 +96,34 @@ const job: IGlobalJob = {
 };
 
 describe('global public contract and entity exclusions', () => {
+  it('exposes pnpm 10 shared packages and warning without private facts', () => {
+    const sharedPackages = [
+      { name: 'test-neighbour', version: '1.0.0', linked: false },
+    ];
+    const expected = {
+      ...job,
+      preview: {
+        ...preview,
+        manager: 'pnpm',
+        managerVersion: '10.34.9',
+        sharedPackages,
+        warningCodes: [...preview.warningCodes, 'PNPM_SHARED_GLOBAL_PROJECT'],
+      },
+    };
+    const input = {
+      ...expected,
+      preview: {
+        ...expected.preview,
+        pnpm10Inventory: { secret: 'TEST private' },
+        sharedPackages: [
+          { ...sharedPackages[0], realPath: 'E:\\TEST\\private' },
+        ],
+      },
+    };
+    expect(instanceToPlain(plainToInstance(GlobalJobEntity, input))).toEqual(
+      expected,
+    );
+  });
   it('serializes npm state, repair targets and partial repair results without internal facts', () => {
     const npm = {
       appVersion: '11.17.0',

@@ -170,7 +170,21 @@ export class GlobalVersionsEntity implements IGlobalVersions {
   tags!: Record<string, string>;
 }
 @Exclude()
+export class GlobalSharedPackageEntity {
+  @Expose() @ApiProperty() name!: string;
+  @Expose() @ApiProperty() version!: string;
+  @Expose() @ApiProperty() linked!: boolean;
+}
+@Exclude()
 export class GlobalPreviewEntity implements IGlobalPreview {
+  @Expose()
+  @ApiPropertyOptional({
+    type: [GlobalSharedPackageEntity],
+    description:
+      'Other direct dependencies sharing the pnpm 10 global project.',
+  })
+  @Type(() => GlobalSharedPackageEntity)
+  sharedPackages?: GlobalSharedPackageEntity[];
   @Expose()
   @ApiPropertyOptional({ type: GlobalNpmPreviewEntity })
   @Type(() => GlobalNpmPreviewEntity)

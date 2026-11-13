@@ -1,6 +1,7 @@
 import { win32 } from 'node:path';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { valid as validVersion, validRange } from 'semver';
 import { isAlias, isMap, isScalar, isSeq, parseDocument } from 'yaml';
 import { AppException } from '@/common/exceptions/app.exception';
 import type {
@@ -25,7 +26,11 @@ import {
   parsePnpm10Json,
   readPnpm10File,
 } from '../config/pnpm10-global-config';
-import { assertGlobalDirectory, readGlobalDirectory } from './global-location';
+import {
+  assertGlobalDirectory,
+  readGlobalDirectory,
+  assertPnpm10LocationLayout,
+} from './global-location';
 import {
   isGlobalAbsolutePath,
   isGlobalExactVersion,
@@ -139,7 +144,28 @@ class Pnpm10InventoryReader {
   constructor(
     private readonly location: IGlobalResolvedLocation,
     private readonly deps: IGlobalInventoryDeps,
+    private readonly options: { allowMissingBinDir?: boolean },
   ) {}
+  private async bins(): Promise<IPnpm10BinDirectory> {
+    if (this.options.allowMissingBinDir) {
+      try {
+        await this.identity(this.location.binDir);
+      } catch (error) {
+        this.deps.signal.throwIfAborted();
+        if (!missing(error)) throw error;
+        await this.guard(this.location.binDir, true);
+        if (!this.absent.includes(this.location.binDir))
+          this.absent.push(this.location.binDir);
+        return { complete: true, slots: [], texts: new Map() };
+      }
+    }
+    return readPnpm10BinDirectory({
+      fs: this.deps.fs,
+      signal: this.deps.signal,
+      binDir: this.location.binDir,
+      budget: this.budget,
+    });
+  }
   private async checkpoint(): Promise<void> {
     this.deps.signal.throwIfAborted();
     if (++this.work % 128 === 0) {
@@ -260,6 +286,7 @@ class Pnpm10InventoryReader {
           win32.join(win32.parse(root.path).root, '.pnpm-store', 'v10'),
         ];
     if (!candidates.some((p) => key(p) === key(store))) return failed();
+    assertPnpm10LocationLayout(config, store);
     await this.guard(store);
     await this.guard(virtual);
     const identity = await this.identity(store);
@@ -338,7 +365,8 @@ class Pnpm10InventoryReader {
             nodePaths: [
               win32.join(this.location.globalRoot, '.pnpm', 'node_modules'),
             ],
-          })
+          }) &&
+          !bins.some((bin) => bin.name.toLowerCase() === name.toLowerCase())
         )
           bins.push({ name, target: win32.relative(real, target) });
       }
@@ -412,6 +440,56 @@ class Pnpm10InventoryReader {
       };
     }
     const version = ref.split('(')[0];
+    const unsupportedSpec =
+      validRange(spec) === null && !/^[a-z][a-z0-9._-]*$/i.test(spec);
+    const degrade = async (): Promise<{
+      row: IGlobalPackage;
+      valid: boolean;
+    }> => {
+      // Unsupported installs remain visible, but carry junction facts only. Never
+      // open their destination (which may be outside the global project).
+      await this.recheckLink(fact);
+      this.dependencies.push(fact);
+      return {
+        row: {
+          name,
+          version: ref,
+          bins: [],
+          status: 'invalid',
+          reason: 'INVENTORY_FAILED',
+        },
+        valid: false,
+      };
+    };
+    if (validVersion(version) === null) {
+      if (
+        !ref ||
+        ref.length > 8192 ||
+        Array.from(ref).some(
+          (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
+        )
+      )
+        return failed();
+      const entry =
+        record(lock.packages) &&
+        (lock.packages[`${name}@${version}`] ?? lock.packages[version]);
+      if (
+        !record(entry) ||
+        !record(entry.resolution) ||
+        !Object.keys(entry.resolution).length ||
+        Object.values(entry.resolution).some(
+          (v) => typeof v !== 'string' || !v,
+        ) ||
+        (!unsupportedSpec &&
+          Object.keys(entry.resolution).every(
+            (name) => name === 'integrity',
+          )) ||
+        !record(lock.snapshots) ||
+        !record(lock.snapshots[`${name}@${ref}`] ?? lock.snapshots[ref])
+      )
+        return failed();
+      return degrade();
+    }
     if (!isGlobalExactVersion(version) || !/^[a-z0-9@._+()/-]+$/i.test(ref))
       return failed();
     const depPath = `${name}@${ref}`;
@@ -426,9 +504,17 @@ class Pnpm10InventoryReader {
     const entry = lock.packages[packageKey];
     if (
       !record(entry.resolution) ||
-      Object.keys(entry.resolution).some((name) => name !== 'integrity') ||
-      typeof entry.resolution.integrity !== 'string' ||
-      !/^sha(?:256|384|512)-[a-z0-9+/=]+$/i.test(entry.resolution.integrity)
+      !Object.keys(entry.resolution).length ||
+      Object.values(entry.resolution).some((v) => typeof v !== 'string' || !v)
+    )
+      return failed();
+    const unsupportedResolution = Object.keys(entry.resolution).some(
+      (name) => name !== 'integrity',
+    );
+    if (
+      !unsupportedResolution &&
+      (typeof entry.resolution.integrity !== 'string' ||
+        !/^sha(?:256|384|512)-[a-z0-9+/=]+$/i.test(entry.resolution.integrity))
     )
       return failed();
     const expected = win32.join(
@@ -439,6 +525,7 @@ class Pnpm10InventoryReader {
       name,
     );
     if (key(expected) !== key(realPath)) return failed();
+    if (unsupportedSpec || unsupportedResolution) return degrade();
     await this.guard(realPath);
     fact.directoryIdentity = await this.identity(realPath);
     const manifest = await this.data(win32.join(realPath, 'package.json'));
@@ -618,12 +705,7 @@ class Pnpm10InventoryReader {
       key(config.binDir) !== key(this.location.binDir)
     )
       return failed();
-    const directory = await readPnpm10BinDirectory({
-      fs: this.deps.fs,
-      signal: this.deps.signal,
-      binDir: this.location.binDir,
-      budget: this.budget,
-    });
+    const directory = await this.bins();
     this.entryCount += directory.slots.length;
     const result: IGlobalInventoryResult = {
       packages: [],
@@ -760,12 +842,7 @@ class Pnpm10InventoryReader {
       .sort((a, b) => a.name.localeCompare(b.name));
     await this.recheck();
     // B can change while the project is read. Compare enumeration and bytes too.
-    const afterBins = await readPnpm10BinDirectory({
-      fs: this.deps.fs,
-      signal: this.deps.signal,
-      binDir: this.location.binDir,
-      budget: this.budget,
-    });
+    const afterBins = await this.bins();
     if (
       !afterBins.complete ||
       afterBins.slots.length !== directory.slots.length ||
@@ -796,10 +873,11 @@ class Pnpm10InventoryReader {
 export async function readPnpm10GlobalInventory(
   location: IGlobalResolvedLocation,
   deps: IGlobalInventoryDeps,
+  options: { allowMissingBinDir?: boolean } = {},
 ): Promise<IGlobalInventoryResult> {
   deps.signal.throwIfAborted();
   try {
-    return await new Pnpm10InventoryReader(location, deps).read();
+    return await new Pnpm10InventoryReader(location, deps, options).read();
   } catch (error) {
     deps.signal.throwIfAborted();
     if (

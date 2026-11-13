@@ -92,6 +92,10 @@ export async function pnpm10InventoryFixture(step = 6) {
     globalDir: config.globalDir,
     binDir: P10.home,
     storeDir: P10.store,
+    userConfig: config.userConfig,
+    globalConfig: config.globalConfig,
+    cacheDir: config.cacheDir,
+    configIdentities: [...config.configIdentities],
     pnpm10: config,
   };
   const spawn = testSpawn();
