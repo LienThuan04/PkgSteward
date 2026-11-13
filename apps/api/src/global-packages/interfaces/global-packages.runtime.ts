@@ -9,6 +9,10 @@ import type {
   IGlobalBin,
 } from '@/global-packages/interfaces/global-packages.types';
 import type { IAuditRecord } from '@/core/audit-log/interfaces/audit-log.types';
+import type {
+  IPnpm10GlobalConfig,
+  IPnpm10GlobalInventoryFacts,
+} from '@/global-packages/interfaces/pnpm10-global.types';
 import type { IFileDeleterDeps } from '@/file-ops/deletion/file-deleter';
 import type {
   IPnpmGlobalConfig,
@@ -72,6 +76,7 @@ export interface IGlobalLocation {
   globalConfig: string;
   configIdentities: IGlobalConfigIdentity[];
   pnpm?: IPnpmGlobalConfig;
+  pnpm10?: IPnpm10GlobalConfig;
 }
 export interface IGlobalBinOwner {
   name: string;
@@ -162,6 +167,7 @@ export interface IGlobalPreviewFacts {
   registryChangeAllowed?: boolean;
   locations?: IGlobalLocation[];
   pnpmInventory?: IPnpmGlobalInventoryFacts;
+  pnpm10Inventory?: IPnpm10GlobalInventoryFacts;
   npm?: INpmSelfFacts;
 }
 // Infrastructure inputs only; no controller accepts paths, argv or environment.
