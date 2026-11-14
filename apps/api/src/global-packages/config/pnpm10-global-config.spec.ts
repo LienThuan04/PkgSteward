@@ -9,6 +9,21 @@ import {
 } from './global-config';
 
 describe('pnpm 10 inert configuration', () => {
+  it.each(['global-bin-dir', 'PNPM_HOME'])(
+    'pins a configured absent bin path from %s for inventory proof without creating it',
+    async (selector) => {
+      const binDir = 'D:\\TEST\\absent-bin';
+      const h = config10Fixture({
+        [selector === 'PNPM_HOME' ? selector : 'npm_config_global_bin_dir']:
+          binDir,
+        PATH: binDir,
+      });
+      const config = await readPnpm10GlobalConfig(h.deps);
+      expect(config.binDir).toBe(binDir);
+      expect(config.missingDirectoryPaths).toContain(binDir);
+      expect(h.entries.has(binDir.toLowerCase())).toBe(false);
+    },
+  );
   it('derives independent Windows defaults, pins sources/absences, and never probes', async () => {
     const h = config10Fixture();
     const c = await readPnpm10GlobalConfig(h.deps);
@@ -112,17 +127,16 @@ describe('pnpm 10 inert configuration', () => {
     );
   });
 
-  it.each([
-    { PNPM_HOME: undefined },
-    { PATH: 'D:\\TEST\\other' },
-    { PNPM_HOME: 'D:\\TEST\\absent', PATH: 'D:\\TEST\\absent' },
-  ])('refuses unconfigured bin without creating it (%j)', async (env) => {
-    const h = config10Fixture(env);
-    await expectGlobalReason(
-      () => readPnpm10GlobalConfig(h.deps),
-      'PNPM_GLOBAL_NOT_CONFIGURED',
-    );
-  });
+  it.each([{ PNPM_HOME: undefined }, { PATH: 'D:\\TEST\\other' }])(
+    'refuses unconfigured bin without creating it (%j)',
+    async (env) => {
+      const h = config10Fixture(env);
+      await expectGlobalReason(
+        () => readPnpm10GlobalConfig(h.deps),
+        'PNPM_GLOBAL_NOT_CONFIGURED',
+      );
+    },
+  );
 
   it.each([
     'global-dir=${HOME}\\g',

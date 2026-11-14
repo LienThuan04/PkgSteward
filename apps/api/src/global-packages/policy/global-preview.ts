@@ -485,6 +485,16 @@ export function createGlobalPreview(
   const terminalAfter = npm ? (target?.version ?? npm.bundledVersion) : null;
   const before = sortBins((npm ? npm.overlay?.package : current)?.bins ?? []);
   const after = sortBins(target?.bins ?? []);
+  if (
+    location.pnpm10 &&
+    after.length > 0 &&
+    facts.pnpm10Inventory?.project.missingPaths.some(
+      (p) =>
+        win32.resolve(p).toLowerCase() ===
+        win32.resolve(location.binDir).toLowerCase(),
+    )
+  )
+    return refuse('PNPM_GLOBAL_NOT_CONFIGURED');
   const warnings = npm
     ? npmSelfWarnings(request.action, currentVersion, terminalAfter!)
     : target

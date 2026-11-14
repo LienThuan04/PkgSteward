@@ -547,6 +547,19 @@ export class GlobalPackagesService
       } else if (kind === 'versions') {
         const versions = request as IGlobalVersionsRequest;
         const location = await this.discover(versions.manager, activity);
+        if (
+          location.pnpm10?.missingDirectoryPaths.some(
+            (path) =>
+              win32.resolve(path).toLowerCase() ===
+              win32.resolve(location.binDir).toLowerCase(),
+          )
+        )
+          await readGlobalInventory(location, {
+            fs: this.runtime.fs,
+            environment: this.runtime.environment,
+            signal: activity.signal,
+            spawn: this.probeFor(activity),
+          });
         const policy = await this.registryInput(
           location,
           { ...versions, action: 'change' },
@@ -1394,7 +1407,7 @@ export class GlobalPackagesService
           };
           const result = active.location!.pnpm10
             ? await readPnpm10GlobalInventory(active.location!, deps, {
-                allowMissingBinDir: active.request!.action === 'remove',
+                allowMissingBinDir: true,
               })
             : await readGlobalInventory(active.location!, deps);
           const request = active.request!;
