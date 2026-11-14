@@ -38,8 +38,8 @@ import {
   revalidateRunnerTool,
 } from '@/npm-runner/toolchain/runner-tool';
 import { readPnpmGlobalConfig } from '@/global-packages/config/pnpm-global-config';
-import { readPnpm10GlobalConfig } from '../config/pnpm10-global-config';
-import type { IPnpm10GlobalConfig } from '../interfaces/pnpm10-global.types';
+import { readPnpm10GlobalConfig } from '@/global-packages/config/pnpm10-global-config';
+import type { IPnpm10GlobalConfig } from '@/global-packages/interfaces/pnpm10-global.types';
 
 const failure = (reason: GlobalReasonCode): AppException =>
   new AppException(409, 'Global location or probe is unavailable', 'CONFLICT', {

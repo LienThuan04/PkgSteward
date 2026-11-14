@@ -1,10 +1,10 @@
-import type { IGlobalResolvedLocation } from '../interfaces/global-packages.runtime';
-import type { IGlobalInventoryResult } from '../discovery/global-inventory';
-import type { GlobalAction } from '../interfaces/global-packages.types';
+import type { IGlobalResolvedLocation } from '@/global-packages/interfaces/global-packages.runtime';
+import type { IGlobalInventoryResult } from '@/global-packages/discovery/global-inventory';
+import type { GlobalAction } from '@/global-packages/interfaces/global-packages.types';
 import { AppException } from '@/common/exceptions/app.exception';
 import { win32 } from 'node:path';
-import { assertGlobalPackageMutable } from './global-policy';
-import { assessPnpmGlobalRegistryPolicy } from '../config/pnpm-global-config';
+import { assertGlobalPackageMutable } from '@/global-packages/policy/global-policy';
+import { assessPnpmGlobalRegistryPolicy } from '@/global-packages/config/pnpm-global-config';
 export interface IPnpm10MutationPolicyInput {
   location: IGlobalResolvedLocation;
   inventory: IGlobalInventoryResult;

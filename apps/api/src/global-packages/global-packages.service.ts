@@ -62,9 +62,9 @@ import {
 import { deleteTarget } from '@/file-ops/deletion/file-deleter';
 import type { IGlobalInventoryResult } from '@/global-packages/discovery/global-inventory';
 import { assessPnpmGlobalRegistryPolicy } from '@/global-packages/config/pnpm-global-config';
-import { assertPnpm10GlobalMutable } from './policy/pnpm10-global-policy';
-import { verifyPnpm10GlobalPostcondition } from './policy/pnpm10-global-postcondition';
-import { readPnpm10GlobalInventory } from './discovery/pnpm10-global-inventory';
+import { assertPnpm10GlobalMutable } from '@/global-packages/policy/pnpm10-global-policy';
+import { verifyPnpm10GlobalPostcondition } from '@/global-packages/policy/pnpm10-global-postcondition';
+import { readPnpm10GlobalInventory } from '@/global-packages/discovery/pnpm10-global-inventory';
 import { GlobalRegistry } from '@/global-packages/registry/global-registry';
 import {
   assessGlobalRegistryPolicy,

@@ -1,7 +1,7 @@
 import type { IRunnerFileIdentity } from '@/npm-runner/interfaces/npm-runner.types';
-import type { IGlobalBin } from './global-packages.types';
-import type { IGlobalConfigIdentity } from './global-packages.runtime';
-import type { IPnpmGlobalPolicy } from './pnpm-global.types';
+import type { IGlobalBin } from '@/global-packages/interfaces/global-packages.types';
+import type { IGlobalConfigIdentity } from '@/global-packages/interfaces/global-packages.runtime';
+import type { IPnpmGlobalPolicy } from '@/global-packages/interfaces/pnpm-global.types';
 
 // Private, inert facts. Raw config/auth values and executable text never escape readers.
 export interface IPnpm10GlobalConfig {

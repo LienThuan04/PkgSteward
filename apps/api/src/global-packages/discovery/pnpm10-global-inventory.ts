@@ -7,44 +7,44 @@ import { AppException } from '@/common/exceptions/app.exception';
 import type {
   IGlobalInventoryDeps,
   IGlobalInventoryResult,
-} from './global-inventory';
+} from '@/global-packages/discovery/global-inventory';
 import type {
   IGlobalConfigIdentity,
   IGlobalResolvedLocation,
-} from '../interfaces/global-packages.runtime';
+} from '@/global-packages/interfaces/global-packages.runtime';
 import type {
   IGlobalPackage,
   IGlobalBin,
-} from '../interfaces/global-packages.types';
+} from '@/global-packages/interfaces/global-packages.types';
 import type {
   IPnpm10DependencyFacts,
   IPnpm10GlobalProjectFacts,
-} from '../interfaces/pnpm10-global.types';
+} from '@/global-packages/interfaces/pnpm10-global.types';
 import type { IRunnerFileIdentity } from '@/npm-runner/interfaces/npm-runner.types';
 import { runnerIdentity } from '@/npm-runner/toolchain/runner-tool';
 import {
   parsePnpm10Json,
   readPnpm10File,
-} from '../config/pnpm10-global-config';
+} from '@/global-packages/config/pnpm10-global-config';
 import {
   assertGlobalDirectory,
   readGlobalDirectory,
   assertPnpm10LocationLayout,
-} from './global-location';
+} from '@/global-packages/discovery/global-location';
 import {
   isGlobalAbsolutePath,
   isGlobalExactVersion,
-} from '../execution/global-command';
+} from '@/global-packages/execution/global-command';
 import {
   isGlobalPackageName,
   normalizeGlobalBins,
   assertGlobalPackageMutable,
-} from '../policy/global-policy';
+} from '@/global-packages/policy/global-policy';
 import {
   readPnpm10BinDirectory,
   provePnpm10BinSet,
-} from '../policy/pnpm10-shim';
-import type { IPnpm10BinDirectory } from '../policy/pnpm10-shim';
+} from '@/global-packages/policy/pnpm10-shim';
+import type { IPnpm10BinDirectory } from '@/global-packages/policy/pnpm10-shim';
 
 const failed = (reason = 'INVENTORY_FAILED'): never => {
   throw new AppException(
