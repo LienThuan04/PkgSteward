@@ -5,12 +5,12 @@ import { fileURLToPath } from "node:url"
 import { parseEnv } from "node:util"
 import { nodeRuntimeNotice } from "./node-runtime.mjs"
 
-// Cảnh báo trước khi nạp file .ts: Node dưới 22.18 không tự bỏ kiểu TypeScript nên sẽ lỗi ngay sau đó.
+// JS thuần để Node cũ vẫn in cảnh báo và chạy được bước khởi động.
 const notice = nodeRuntimeNotice(process.versions.node)
 if (notice) console.warn(`[PkgSteward] ${notice}`)
 let resolveServerAddress
 try {
-  ;({ resolveServerAddress } = await import("../lib/config/server-address.ts"))
+  ;({ resolveServerAddress } = await import("../lib/config/server-address.mjs"))
 } catch (error) {
   console.error(error.message)
   process.exit(1)
