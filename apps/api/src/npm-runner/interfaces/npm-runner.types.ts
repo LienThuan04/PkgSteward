@@ -150,6 +150,22 @@ export interface IRunnerFileHandle {
 export interface IRunnerFs extends IProjectFs {
   open(path: string): Promise<IRunnerFileHandle>;
 }
+export type IRunnerNpm10InstallCompat =
+  | { revision: 1; supported: false; fingerprint: string }
+  | {
+      revision: 1;
+      supported: true;
+      preload: string;
+      source: string;
+      loader: string;
+      sourceSha256: string;
+      loaderSha256: string;
+      preloadSha256: string;
+    };
+export interface IRunnerNpm10CompatSnapshot {
+  compat: IRunnerNpm10InstallCompat;
+  identities: IRunnerFileIdentity[];
+}
 export interface IRunnerTool {
   manager: RunnerManager;
   version: string;
@@ -157,6 +173,7 @@ export interface IRunnerTool {
   entry: string | null;
   packageDir: string;
   identities: IRunnerFileIdentity[];
+  npm10InstallCompat?: IRunnerNpm10InstallCompat;
 }
 export interface IRunnerToolSnapshot {
   platform: PathPlatform;
