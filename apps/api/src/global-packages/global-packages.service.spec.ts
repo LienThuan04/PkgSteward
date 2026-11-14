@@ -27,6 +27,7 @@ import {
   testConfigIdentity,
   testFacts,
   testInventory,
+  testProcess,
   testRequest,
   testRuntime,
   TEST_EXECUTE_ID,
@@ -43,8 +44,12 @@ import { npmLifecycleFixture } from '@/global-packages/__fixtures__/npm-overlay/
 import { npmTarget } from '@/global-packages/__fixtures__/npm-overlay/facts';
 import { PNPM_TEST_PATHS as Q } from '@/global-packages/__fixtures__/pnpm11/facts';
 import type { IPnpmGlobalPolicy } from '@/global-packages/interfaces/pnpm-global.types';
-import { pnpm10InventoryFixture } from './__fixtures__/pnpm10/inventory';
+import {
+  pnpm10BinlessFixture,
+  pnpm10InventoryFixture,
+} from './__fixtures__/pnpm10/inventory';
 import { readPnpm10GlobalInventory } from './discovery/pnpm10-global-inventory';
+import { readPnpm10GlobalConfig } from './config/pnpm10-global-config';
 
 describe('pnpm 10 shared-project service integration', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -59,9 +64,13 @@ describe('pnpm 10 shared-project service integration', () => {
     }
     throw new Error('TEST pnpm 10 job did not finish');
   }
-  async function setup10(action: 'change' | 'remove' = 'remove') {
+  async function setup10(
+    action: 'change' | 'remove' = 'remove',
+    fixture?: Awaited<ReturnType<typeof pnpm10InventoryFixture>>,
+  ) {
     const f = testRuntime();
-    const h = await pnpm10InventoryFixture(action === 'change' ? 4 : 6);
+    const h =
+      fixture ?? (await pnpm10InventoryFixture(action === 'change' ? 4 : 6));
     f.runtime.fs = h.fs;
     f.runtime.environment = h.environment;
     jest.spyOn(f.runtime, 'resolveTool').mockResolvedValue(h.location.tool);
@@ -115,6 +124,161 @@ describe('pnpm 10 shared-project service integration', () => {
       );
     return { ...f, h, service, ready, execute };
   }
+  it('completes binless change after separate bin cleanup, then removes the final package', async () => {
+    const f = await setup10(
+      'change',
+      await pnpm10BinlessFixture('7.0.0', false),
+    );
+    const preview = await f.ready(),
+      start = await f.execute(preview);
+    await f.service.waitForPreflight(start.jobId);
+    await settleJobs();
+    expect(f.child.launch).toHaveBeenCalledTimes(1);
+    const after = await pnpm10BinlessFixture('6.0.0');
+    f.h.entries.clear();
+    for (const [p, entry] of after.entries) f.h.entries.set(p, entry);
+    f.child.exit();
+    expect(await finish10(f.service, start.jobId)).toMatchObject({
+      status: 'completed',
+      failureCode: null,
+      gateHeld: false,
+      refreshRequired: false,
+    });
+    f.h.location.pnpm10 = after.location.pnpm10;
+    f.h.location.configIdentities = [...after.location.configIdentities];
+    const next = await f.service.preview({
+      requestId: f.uuid(),
+      manager: 'pnpm',
+      package: 'is-number',
+      action: 'remove',
+    });
+    const remove = await finish10(f.service, next.jobId);
+    expect(remove).toMatchObject({ status: 'completed', failureCode: null });
+    const removeChild = testProcess();
+    f.child.launch.mockImplementationOnce(removeChild.launch);
+    const removal = await f.execute(remove.preview!);
+    await f.service.waitForPreflight(removal.jobId);
+    await settleJobs();
+    expect(f.child.launch).toHaveBeenCalledTimes(2);
+    const empty = await pnpm10BinlessFixture(null);
+    f.h.entries.clear();
+    for (const [p, entry] of empty.entries) f.h.entries.set(p, entry);
+    removeChild.exit();
+    expect(await finish10(f.service, removal.jobId)).toMatchObject({
+      status: 'completed',
+      failureCode: null,
+      gateHeld: false,
+      refreshRequired: false,
+    });
+  });
+  it('refuses a binful target when the configured bin directory is absent', async () => {
+    const f = await setup10('change', await pnpm10BinlessFixture());
+    jest.spyOn(GlobalRegistry.prototype, 'getTarget').mockResolvedValue({
+      name: 'is-number',
+      version: '6.0.0',
+      requestedVersion: '6.0.0',
+      manifestHash: 'TEST',
+      integrity: 'TEST',
+      bins: [{ name: 'is-number', target: 'bin.js' }],
+      engines: null,
+      deprecated: false,
+    });
+    const start = await f.service.preview({
+      requestId: f.uuid(),
+      manager: 'pnpm',
+      action: 'change',
+      package: 'is-number',
+      targetVersion: '6.0.0',
+    });
+    expect(await finish10(f.service, start.jobId)).toMatchObject({
+      status: 'failed',
+      failureCode: 'PNPM_GLOBAL_NOT_CONFIGURED',
+      preview: null,
+    });
+    expect(f.child.launch).not.toHaveBeenCalled();
+  });
+  it.each(['before-execute', 'after-intent'] as const)(
+    'refuses absent bin appearance %s without launching',
+    async (phase) => {
+      const f = await setup10('change', await pnpm10BinlessFixture());
+      const preview = await f.ready();
+      const appear = () => f.h.put(f.h.location.binDir, { directory: true });
+      if (phase === 'before-execute') appear();
+      else
+        f.audit.mockImplementation((record) => {
+          if (record.phase === 'intent') appear();
+          return Promise.resolve();
+        });
+      const start = await f.execute(preview);
+      expect(await finish10(f.service, start.jobId)).toMatchObject({
+        status: 'failed',
+        failureCode: 'PREVIEW_CHANGED',
+        mutationSpawned: false,
+      });
+      expect(f.child.launch).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['valid', 'missing-root', 'binful', 'linked'] as const)(
+    'requires absent-bin inventory proof for versions: %s',
+    async (kind) => {
+      const h =
+        kind === 'binful' || kind === 'linked'
+          ? await pnpm10InventoryFixture(kind === 'binful' ? 1 : 6)
+          : await pnpm10BinlessFixture();
+      if (kind === 'binful' || kind === 'linked') {
+        h.location.binDir = 'D:\\TEST\\absent-bin';
+        h.location.pnpm10 = {
+          ...h.location.pnpm10,
+          binDir: h.location.binDir,
+          missingDirectoryPaths: [h.location.binDir],
+        };
+      }
+      if (kind === 'missing-root') {
+        const root = h.location.globalRoot.toLowerCase();
+        for (const p of h.entries.keys())
+          if (p === root || p.startsWith(`${root}\\`)) h.entries.delete(p);
+      }
+      h.environment.npm_config_global_bin_dir = h.location.binDir;
+      h.environment.PATH = `${h.location.binDir};${win32.dirname(h.location.tool.file)}`;
+      const config = await readPnpm10GlobalConfig({
+        fs: h.fs,
+        tool: h.location.tool,
+        environment: h.environment,
+        cwd: h.location.cwd,
+        signal: h.controller.signal,
+        checkDirectory: h.checkDirectory,
+      });
+      h.location.pnpm10 = config;
+      h.location.configIdentities = [...config.configIdentities];
+      const f = await setup10('change', h);
+      const lookup = jest
+        .spyOn(GlobalRegistry.prototype, 'getVersions')
+        .mockResolvedValue({
+          manager: 'pnpm',
+          package: 'is-number',
+          versions: ['6.0.0', '7.0.0'],
+          tags: { latest: '7.0.0' },
+          deprecatedVersions: [],
+        });
+      const start = await f.service.versions({
+        requestId: f.uuid(),
+        manager: 'pnpm',
+        package: 'is-number',
+      });
+      const job = await finish10(f.service, start.jobId);
+      if (kind === 'valid') {
+        expect(job).toMatchObject({ status: 'completed', failureCode: null });
+        expect(lookup).toHaveBeenCalledTimes(1);
+      } else {
+        expect(job).toMatchObject({
+          status: 'failed',
+          failureCode: 'PNPM_GLOBAL_NOT_CONFIGURED',
+        });
+        expect(lookup).not.toHaveBeenCalled();
+      }
+      expect(f.child.launch).not.toHaveBeenCalled();
+    },
+  );
   it('previews linked neighbours and refuses post-intent neighbour drift with zero launch', async () => {
     const f = await setup10();
     const preview = await f.ready();

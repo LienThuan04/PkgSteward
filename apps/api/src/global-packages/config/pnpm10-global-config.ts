@@ -663,8 +663,8 @@ export async function readPnpm10GlobalConfig(
       } catch (error) {
         signal.throwIfAborted();
         if (!absent(error)) throw error;
-        if (key(directory) === key(binDir))
-          return refuse('PNPM_GLOBAL_NOT_CONFIGURED');
+        // A configured B may disappear when pnpm cleans an all-binless project.
+        // Retain absence; inventory must prove the narrow registry-only case.
         missingDirectoryPaths.push(directory);
       }
     }

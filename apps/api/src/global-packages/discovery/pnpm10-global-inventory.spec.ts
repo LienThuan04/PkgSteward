@@ -5,12 +5,65 @@ import {
   readPnpm10GlobalInventory,
   pnpm10DepPathToFilename,
 } from './pnpm10-global-inventory';
-import { pnpm10InventoryFixture } from '../__fixtures__/pnpm10/inventory';
+import {
+  pnpm10BinlessFixture,
+  pnpm10InventoryFixture,
+} from '../__fixtures__/pnpm10/inventory';
 import { P10 } from '../__fixtures__/pnpm10/config';
 import { expectGlobalReason } from '../__fixtures__/global-adapters';
 import { assertGlobalPackageMutable } from '../policy/global-policy';
 
 describe('pnpm 10 static direct-dependency inventory', () => {
+  it('proves an existing all-registry binless project with its configured bin directory absent', async () => {
+    const h = await pnpm10BinlessFixture();
+    const r = await readPnpm10GlobalInventory(h.location, h.deps);
+    expect(r.packages).toMatchObject([
+      { name: 'is-number', version: '7.0.0', status: 'manageable' },
+    ]);
+    expect(r.ownershipComplete).toBe(true);
+    expect(r.pnpm10Inventory?.project.missingPaths).toContain(
+      h.location.binDir,
+    );
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+  it.each([1, 6])(
+    'refuses missing-bin proof for existing bins or linked/unknown bins (step %i)',
+    async (step) => {
+      const h = await pnpm10InventoryFixture(step),
+        binDir = 'D:\\TEST\\absent-bin';
+      h.location.binDir = binDir;
+      h.location.pnpm10 = {
+        ...h.location.pnpm10,
+        binDir,
+        missingDirectoryPaths: [binDir],
+      };
+      await expectGlobalReason(
+        () =>
+          readPnpm10GlobalInventory(h.location, h.deps, {
+            allowMissingBinDir: true,
+          }),
+        'PNPM_GLOBAL_NOT_CONFIGURED',
+      );
+      expect(h.spawn).not.toHaveBeenCalled();
+    },
+  );
+  it('rejects an absent bin directory appearing empty while the project is being read', async () => {
+    const h = await pnpm10BinlessFixture(),
+      original = h.lstat.getMockImplementation()!;
+    let observations = 0;
+    h.lstat.mockImplementation((p) => {
+      if (
+        p.toLowerCase() === h.location.binDir.toLowerCase() &&
+        ++observations === 3
+      )
+        h.put(h.location.binDir, { directory: true });
+      return original(p);
+    });
+    await expectGlobalReason(
+      () => readPnpm10GlobalInventory(h.location, h.deps),
+      'INVENTORY_FAILED',
+    );
+  });
   it.each([1, 2, 3, 4, 5, 6, 7, 8, 9])(
     'matches F5b b%i list --json direct rows',
     async (step) => {
@@ -76,7 +129,7 @@ describe('pnpm 10 static direct-dependency inventory', () => {
     expect(r.ownershipComplete).toBe(true);
     expect(r.pnpm10Inventory?.project.missingPaths).toContain(P10.root);
   });
-  it('accepts a missing separate bin directory only during remove postcondition verification', async () => {
+  it('accepts unpinned bin absence only for postcondition proof of an existing binless project', async () => {
     const h = await pnpm10InventoryFixture(9);
     const binDir = 'D:\\TEST\\separate-bin';
     h.location.binDir = binDir;
@@ -92,6 +145,104 @@ describe('pnpm 10 static direct-dependency inventory', () => {
     expect(r.pnpm10Inventory?.project.missingPaths).toContain(binDir);
     expect(r.ownershipComplete).toBe(true);
   });
+  it('rejects a configured absent bin directory already present at inventory start', async () => {
+    const h = await pnpm10BinlessFixture();
+    h.put(h.location.binDir, { directory: true });
+    await expectGlobalReason(
+      () => readPnpm10GlobalInventory(h.location, h.deps),
+      'INVENTORY_FAILED',
+    );
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+  it('refuses missing bin proof when the global project is also absent', async () => {
+    const h = await pnpm10BinlessFixture();
+    for (const p of h.entries.keys())
+      if (
+        p === P10.root.toLowerCase() ||
+        p.startsWith(`${P10.root.toLowerCase()}\\`)
+      )
+        h.entries.delete(p);
+    await expectGlobalReason(
+      () => readPnpm10GlobalInventory(h.location, h.deps),
+      'PNPM_GLOBAL_NOT_CONFIGURED',
+    );
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+  it('proves an existing empty project after removing the last binless package', async () => {
+    const h = await pnpm10BinlessFixture(null);
+    const r = await readPnpm10GlobalInventory(h.location, h.deps);
+    expect(r.packages).toEqual([]);
+    expect(r.ownershipComplete).toBe(true);
+    expect(r.pnpm10Inventory?.project.root).not.toBeNull();
+    expect(r.pnpm10Inventory?.project.missingPaths).toContain(
+      h.location.binDir,
+    );
+  });
+  it.each([
+    'package.json',
+    'pnpm-lock.yaml',
+    '.pnpm/is-number@7.0.0/node_modules/is-number/package.json',
+  ])('refuses absent bin with missing metadata: %s', async (relative) => {
+    const h = await pnpm10BinlessFixture();
+    const file = win32.join(P10.root, relative);
+    h.entries.delete(file.toLowerCase());
+    await expectGlobalReason(
+      () => readPnpm10GlobalInventory(h.location, h.deps),
+      'INVENTORY_FAILED',
+    );
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+  it.each(['f5b-local-tool', 'npm'])(
+    'refuses missing-bin linked-only %s without following its source',
+    async (name) => {
+      const h = await pnpm10BinlessFixture();
+      for (const relative of [
+        'package.json',
+        'pnpm-lock.yaml',
+        'node_modules/.pnpm/lock.yaml',
+      ]) {
+        const file = win32.join(P10.root, relative),
+          entry = h.entries.get(file.toLowerCase())!;
+        const data = parse(entry.text!) as {
+          dependencies?: Record<string, unknown>;
+          importers?: Record<
+            string,
+            { dependencies?: Record<string, unknown> }
+          >;
+        };
+        const dependencies =
+          data.importers?.['.']?.dependencies ?? data.dependencies!;
+        delete dependencies['is-number'];
+        dependencies[name] =
+          relative === 'package.json'
+            ? 'link:../../linksrc'
+            : {
+                specifier: 'link:../../linksrc',
+                version: 'link:../../linksrc',
+              };
+        h.put(file, {
+          text:
+            relative === 'package.json'
+              ? JSON.stringify(data)
+              : stringify(data),
+        });
+      }
+      h.entries.delete(`${P10.root}\\node_modules\\is-number`.toLowerCase());
+      h.put(`${P10.root}\\node_modules\\${name}`, {
+        link: true,
+        real: 'E:\\TEST\\linksrc',
+      });
+      await expectGlobalReason(
+        () => readPnpm10GlobalInventory(h.location, h.deps),
+        'PNPM_GLOBAL_NOT_CONFIGURED',
+      );
+      expect(h.open.mock.calls.some(([p]) => p.startsWith('E:'))).toBe(false);
+      expect(
+        h.readdir.mock.calls.some(([p]) => String(p).startsWith('E:')),
+      ).toBe(false);
+      expect(h.spawn).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     'manifest',
     'wanted',

@@ -146,25 +146,30 @@ class Pnpm10InventoryReader {
     private readonly deps: IGlobalInventoryDeps,
     private readonly options: { allowMissingBinDir?: boolean },
   ) {}
-  private async bins(): Promise<IPnpm10BinDirectory> {
-    if (this.options.allowMissingBinDir) {
+  private async bins(): Promise<IPnpm10BinDirectory & { missing: boolean }> {
+    const pinnedMissing = this.location.pnpm10?.missingDirectoryPaths.some(
+      (p) => key(p) === key(this.location.binDir),
+    );
+    if (this.options.allowMissingBinDir || pinnedMissing) {
       try {
         await this.identity(this.location.binDir);
+        if (pinnedMissing) return failed();
       } catch (error) {
         this.deps.signal.throwIfAborted();
         if (!missing(error)) throw error;
         await this.guard(this.location.binDir, true);
         if (!this.absent.includes(this.location.binDir))
           this.absent.push(this.location.binDir);
-        return { complete: true, slots: [], texts: new Map() };
+        return { complete: true, slots: [], texts: new Map(), missing: true };
       }
     }
-    return readPnpm10BinDirectory({
+    const directory = await readPnpm10BinDirectory({
       fs: this.deps.fs,
       signal: this.deps.signal,
       binDir: this.location.binDir,
       budget: this.budget,
     });
+    return { ...directory, missing: false };
   }
   private async checkpoint(): Promise<void> {
     this.deps.signal.throwIfAborted();
@@ -722,6 +727,7 @@ class Pnpm10InventoryReader {
     }
     let store: IRunnerFileIdentity | null = null;
     if (!root) {
+      if (directory.missing) return failed('PNPM_GLOBAL_NOT_CONFIGURED');
       await this.guard(this.location.globalRoot, true);
       this.absent.push(this.location.globalRoot);
     } else {
@@ -780,6 +786,11 @@ class Pnpm10InventoryReader {
       )
         return failed();
       await this.checkDirectNames(names);
+      if (
+        directory.missing &&
+        names.some((name) => dependencies[name].startsWith('link:'))
+      )
+        return failed('PNPM_GLOBAL_NOT_CONFIGURED');
       for (const name of names) {
         const { row, valid } = await this.direct(
           name,
@@ -802,6 +813,19 @@ class Pnpm10InventoryReader {
             binIdentities: [...fact.binIdentities],
           });
       }
+      if (
+        directory.missing &&
+        (!result.ownershipComplete ||
+          result.packages.some((row) => row.status !== 'manageable') ||
+          this.dependencies.some(
+            (dep) =>
+              dep.linked ||
+              !dep.manifest ||
+              !dep.directoryIdentity ||
+              dep.bins.length > 0,
+          ))
+      )
+        return failed('PNPM_GLOBAL_NOT_CONFIGURED');
       // Ancillary trees are structural facts, never an alternate source of rows.
       for (const path of [
         win32.join(root.path, '.pnpm'),
@@ -843,6 +867,7 @@ class Pnpm10InventoryReader {
     await this.recheck();
     // B can change while the project is read. Compare enumeration and bytes too.
     const afterBins = await this.bins();
+    if (afterBins.missing !== directory.missing) return failed();
     if (
       !afterBins.complete ||
       afterBins.slots.length !== directory.slots.length ||
@@ -883,7 +908,8 @@ export async function readPnpm10GlobalInventory(
     if (
       error instanceof AppException &&
       record(error.details) &&
-      error.details.reason === 'LIMIT_EXCEEDED'
+      (error.details.reason === 'LIMIT_EXCEEDED' ||
+        error.details.reason === 'PNPM_GLOBAL_NOT_CONFIGURED')
     )
       throw error;
     return failed();
