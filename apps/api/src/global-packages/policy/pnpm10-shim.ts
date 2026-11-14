@@ -1,13 +1,13 @@
 import { win32 } from 'node:path';
 import type { IRunnerFs } from '@/npm-runner/interfaces/npm-runner.types';
-import type { IPnpm10BinSlot } from '../interfaces/pnpm10-global.types';
-import type { IGlobalConfigIdentity } from '../interfaces/global-packages.runtime';
-import { isGlobalAbsolutePath } from '../execution/global-command';
+import type { IPnpm10BinSlot } from '@/global-packages/interfaces/pnpm10-global.types';
+import type { IGlobalConfigIdentity } from '@/global-packages/interfaces/global-packages.runtime';
+import { isGlobalAbsolutePath } from '@/global-packages/execution/global-command';
 import {
   assertGlobalDirectory,
   readGlobalDirectory,
-} from '../discovery/global-location';
-import { readPnpm10File } from '../config/pnpm10-global-config';
+} from '@/global-packages/discovery/global-location';
+import { readPnpm10File } from '@/global-packages/config/pnpm10-global-config';
 import {
   runnerIdentity,
   sameRunnerIdentity,

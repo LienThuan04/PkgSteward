@@ -1,7 +1,7 @@
-import type { IGlobalPreviewFacts } from '../interfaces/global-packages.runtime';
-import type { IGlobalInventoryResult } from '../discovery/global-inventory';
-import type { IGlobalPreviewRequest } from '../interfaces/global-packages.types';
-import type { IPnpm10DependencyFacts } from '../interfaces/pnpm10-global.types';
+import type { IGlobalPreviewFacts } from '@/global-packages/interfaces/global-packages.runtime';
+import type { IGlobalInventoryResult } from '@/global-packages/discovery/global-inventory';
+import type { IGlobalPreviewRequest } from '@/global-packages/interfaces/global-packages.types';
+import type { IPnpm10DependencyFacts } from '@/global-packages/interfaces/pnpm10-global.types';
 import { isDeepStrictEqual } from 'node:util';
 import { win32 } from 'node:path';
 const key = (path: string) => win32.resolve(path).toLowerCase();

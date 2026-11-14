@@ -1,14 +1,17 @@
-import type { IGlobalCommand } from '../interfaces/global-packages.runtime';
-import type { IGlobalMutationInput, IGlobalQueryInput } from './global-command';
-import type { IPnpm10GlobalConfig } from '../interfaces/pnpm10-global.types';
+import type { IGlobalCommand } from '@/global-packages/interfaces/global-packages.runtime';
+import type {
+  IGlobalMutationInput,
+  IGlobalQueryInput,
+} from '@/global-packages/execution/global-command';
+import type { IPnpm10GlobalConfig } from '@/global-packages/interfaces/pnpm10-global.types';
 import { AppException } from '@/common/exceptions/app.exception';
 import { win32 } from 'node:path';
 import {
   environmentFor,
   isGlobalAbsolutePath,
   isGlobalExactVersion,
-} from './global-command';
-import { isGlobalPackageName } from '../policy/global-policy';
+} from '@/global-packages/execution/global-command';
+import { isGlobalPackageName } from '@/global-packages/policy/global-policy';
 
 const fail = (reason: string): never => {
   throw new AppException(409, 'pnpm 10 command refused', 'CONFLICT', {

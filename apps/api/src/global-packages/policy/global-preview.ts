@@ -31,7 +31,7 @@ import {
   assertNpmTarget,
   npmSelfWarnings,
   npmTerminalVersion,
-} from './npm-overlay';
+} from '@/global-packages/policy/npm-overlay';
 import { validateConfirmation } from '@/core/risk/confirmation';
 import type { IGlobalConfigIdentity } from '@/global-packages/interfaces/global-packages.runtime';
 import type {

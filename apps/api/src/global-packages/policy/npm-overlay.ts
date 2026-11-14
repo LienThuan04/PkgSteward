@@ -2,27 +2,27 @@ import { createHash } from 'node:crypto';
 import { win32 } from 'node:path';
 import * as semver from 'semver';
 import { AppException } from '@/common/exceptions/app.exception';
-import { NPM_SHIM_NAMES } from '../interfaces/global-packages.runtime';
+import { NPM_SHIM_NAMES } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
   IGlobalTargetFacts,
   INpmPathFacts,
   INpmSelfFacts,
   INpmShimFacts,
-} from '../interfaces/global-packages.runtime';
+} from '@/global-packages/interfaces/global-packages.runtime';
 import type {
   GlobalAction,
   GlobalReasonCode,
   GlobalWarningCode,
   IGlobalBin,
   IGlobalNpmVersion,
-} from '../interfaces/global-packages.types';
+} from '@/global-packages/interfaces/global-packages.types';
 import {
   NODE24_NODE_DIR_SHIMS,
   NODE_DIR_SHIM_SETS,
   CMD_SHIM8_PNPM_SHIMS,
   CMD_SHIM8_PNPM_TARGET,
   npm12Shims,
-} from './npm-shim-shapes';
+} from '@/global-packages/policy/npm-shim-shapes';
 
 const refuse = (reason: GlobalReasonCode): never => {
   throw new AppException(

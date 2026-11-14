@@ -20,24 +20,24 @@ import type {
   INpmPathFacts,
   INpmSelfFacts,
   INpmShimFacts,
-} from '../interfaces/global-packages.runtime';
-import { NPM_SHIM_NAMES } from '../interfaces/global-packages.runtime';
+} from '@/global-packages/interfaces/global-packages.runtime';
+import { NPM_SHIM_NAMES } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
   GlobalReasonCode,
   IGlobalNpmVersion,
-} from '../interfaces/global-packages.types';
+} from '@/global-packages/interfaces/global-packages.types';
 import {
   isGlobalAbsolutePath,
   isGlobalExactVersion,
-} from '../execution/global-command';
-import { normalizeGlobalBins } from '../policy/global-policy';
+} from '@/global-packages/execution/global-command';
+import { normalizeGlobalBins } from '@/global-packages/policy/global-policy';
 import {
   classifyNpmOverlay,
   npmDelegation,
   npmRetireCandidates,
   npmTerminalVersion,
-} from '../policy/npm-overlay';
-import { assertGlobalDirectory } from './global-location';
+} from '@/global-packages/policy/npm-overlay';
+import { assertGlobalDirectory } from '@/global-packages/discovery/global-location';
 
 const SHIM_LIMIT = 64 * 1024;
 const MANIFEST_LIMIT = 1024 * 1024;

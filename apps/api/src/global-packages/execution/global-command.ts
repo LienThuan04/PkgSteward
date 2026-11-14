@@ -23,11 +23,11 @@ import type { IPnpmGlobalConfig } from '@/global-packages/interfaces/pnpm-global
 import type {
   IPnpm10GlobalConfig,
   IPnpm10GlobalInventoryFacts,
-} from '../interfaces/pnpm10-global.types';
+} from '@/global-packages/interfaces/pnpm10-global.types';
 import {
   buildPnpm10GlobalCommand,
   buildPnpm10GlobalQuery,
-} from './pnpm10-global-command';
+} from '@/global-packages/execution/pnpm10-global-command';
 
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org';
 // pnpm 11.22.0:214230-214250,272082: auto-approval ignores non-TTY consent.

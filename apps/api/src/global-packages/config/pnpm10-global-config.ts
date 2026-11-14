@@ -4,9 +4,9 @@ import { AppException } from '@/common/exceptions/app.exception';
 import type {
   IPnpmGlobalConfigDeps,
   IPnpmGlobalPolicy,
-} from '../interfaces/pnpm-global.types';
-import type { IPnpm10GlobalConfig } from '../interfaces/pnpm10-global.types';
-import type { IGlobalConfigIdentity } from '../interfaces/global-packages.runtime';
+} from '@/global-packages/interfaces/pnpm-global.types';
+import type { IPnpm10GlobalConfig } from '@/global-packages/interfaces/pnpm10-global.types';
+import type { IGlobalConfigIdentity } from '@/global-packages/interfaces/global-packages.runtime';
 import type {
   IRunnerFileIdentity,
   IRunnerFs,
@@ -15,12 +15,12 @@ import {
   runnerIdentity,
   sameRunnerIdentity,
 } from '@/npm-runner/toolchain/runner-tool';
-import { isGlobalAbsolutePath } from '../execution/global-command';
-import { isGlobalPackageName } from '../policy/global-policy';
+import { isGlobalAbsolutePath } from '@/global-packages/execution/global-command';
+import { isGlobalPackageName } from '@/global-packages/policy/global-policy';
 import {
   GLOBAL_CONFIG_FILE_LIMIT,
   GLOBAL_CONFIG_TOTAL_LIMIT,
-} from './global-config';
+} from '@/global-packages/config/global-config';
 
 type ConfigReason =
   'CONFIG_UNSUPPORTED' | 'LIMIT_EXCEEDED' | 'PNPM_GLOBAL_NOT_CONFIGURED';
