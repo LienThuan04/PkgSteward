@@ -2204,6 +2204,7 @@
     },
     "project": {
       "openDetail": "Xem chi tiết",
+      "openDetailAria": "{label} dự án {name}",
       "declaredLabel": "Khai báo phiên bản:",
       "noDeclaration": "Dự án không có tệp .nvmrc, .node-version hoặc engines.node trong package.json.",
       "mismatchInstalled": "Node đang chạy là {active}, nhưng dự án yêu cầu bản tương thích khác. Máy bạn đã có sẵn {target} — sao chép lệnh bên dưới để chuyển thủ công:",

@@ -114,6 +114,7 @@ function ProjectCompatibilityRow({
   returnContext: { returnTo?: string; originId?: string | null }
 }) {
   const t = useTranslations("nodeRuntime")
+  const openDetailLabel = t("project.openDetail")
 
   return (
     <article className="min-w-0 space-y-3 rounded-md border border-border bg-card p-4 text-card-foreground md:p-5">
@@ -144,8 +145,12 @@ function ProjectCompatibilityRow({
               returnContext,
             )}
             prefetch={false}
+            aria-label={t("project.openDetailAria", {
+              label: openDetailLabel,
+              name: project.name?.trim() || project.path,
+            })}
           >
-            {t("project.openDetail")}
+            {openDetailLabel}
             <ArrowRightIcon data-icon="inline-end" aria-hidden="true" />
           </Link>
         </Button>

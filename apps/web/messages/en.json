@@ -2194,6 +2194,7 @@
     },
     "project": {
       "openDetail": "Open details",
+      "openDetailAria": "{label} for {name}",
       "declaredLabel": "Declared requirements:",
       "noDeclaration": "No .nvmrc, .node-version, or package.json engines.node requirement found.",
       "mismatchInstalled": "Active Node is {active}, while this project requires another version. Matching version {target} is already installed — copy a command below to switch manually:",
