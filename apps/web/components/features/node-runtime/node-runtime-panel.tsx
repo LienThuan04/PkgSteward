@@ -39,7 +39,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { useNavigationContinuity } from "@/hooks/use-navigation-continuity"
+import { useNavigationContinuity, useViewState } from "@/hooks/use-navigation-continuity"
 import { getBrowserNodeRuntimeOverview } from "@/lib/api/node-runtime/node-runtime-browser"
 import { ApiError } from "@/lib/api/response"
 import type {
@@ -51,10 +51,12 @@ import type {
 } from "@/lib/node-runtime/node-runtime-types"
 import {
   filterAndSortNodeProjects,
+  NODE_RUNTIME_DISCOVERY,
   NODE_STATUS_ORDER,
+  nodeRuntimeDiscoveryCodec,
 } from "@/lib/node-runtime/node-runtime-view"
 import { projectDetailHref } from "@/lib/projects/project-detail-list"
-import { appendReturnContext } from "@/lib/ui/navigation-targets"
+import { appendReturnContext, makeViewStateKey } from "@/lib/ui/navigation-targets"
 import { cn } from "@/lib/utils"
 
 export type InitialNodeRuntime =
@@ -244,11 +246,12 @@ export function NodeRuntimePanel({
     initial.kind === "error" ? initial.code : null,
   )
   const [refreshing, setRefreshing] = useState(false)
-  const [query, setQuery] = useState("")
-  const [selectedStatuses, setSelectedStatuses] = useState<
-    NodeCompatibilityStatus[]
-  >([])
-  const [sort, setSort] = useState<NodeProjectSort>("priority")
+  const [discovery, setDiscovery, resetDiscovery] = useViewState(
+    makeViewStateKey("node-runtime-list"),
+    nodeRuntimeDiscoveryCodec,
+    NODE_RUNTIME_DISCOVERY,
+  )
+  const { query, statuses: selectedStatuses, sort } = discovery
   const listAnchorRef = useRef<HTMLDivElement | null>(null)
   const refreshControllerRef = useRef<AbortController | null>(null)
 
@@ -308,17 +311,12 @@ export function NodeRuntimePanel({
   })
 
   function toggleStatusFilter(status: NodeCompatibilityStatus) {
-    setSelectedStatuses((current) =>
-      current.includes(status)
-        ? current.filter((selectedStatus) => selectedStatus !== status)
-        : [...current, status],
-    )
-  }
-
-  function resetDiscovery() {
-    setQuery("")
-    setSelectedStatuses([])
-    setSort("priority")
+    setDiscovery((current) => ({
+      ...current,
+      statuses: current.statuses.includes(status)
+        ? current.statuses.filter((selectedStatus) => selectedStatus !== status)
+        : [...current.statuses, status],
+    }))
   }
 
   const statusOptions = useMemo(
@@ -511,7 +509,7 @@ export function NodeRuntimePanel({
                 <button
                   type="button"
                   aria-pressed={selectedStatuses.length === 0}
-                  onClick={() => setSelectedStatuses([])}
+                  onClick={() => setDiscovery((current) => ({ ...current, statuses: [] }))}
                   className={cn(
                     "flex min-w-0 flex-col gap-1 rounded-md border bg-card p-4 text-left transition-colors focus-ring hover:bg-muted/50",
                     selectedStatuses.length === 0
@@ -561,7 +559,7 @@ export function NodeRuntimePanel({
               <div className="rounded-md border border-border bg-card p-4">
                 <DiscoveryControls
                   query={query}
-                  onQueryChange={setQuery}
+                  onQueryChange={(query) => setDiscovery((current) => ({ ...current, query }))}
                   count={visibleProjects.length}
                   total={overview.projects.length}
                   onReset={resetDiscovery}
@@ -570,12 +568,12 @@ export function NodeRuntimePanel({
                     label={t("filters.status")}
                     value={selectedStatuses}
                     options={statusOptions}
-                    onValueChange={setSelectedStatuses}
+                    onValueChange={(statuses) => setDiscovery((current) => ({ ...current, statuses }))}
                   />
                   <DiscoverySort<NodeProjectSort>
                     value={sort}
                     options={sortOptions}
-                    onValueChange={setSort}
+                    onValueChange={(sort) => setDiscovery((current) => ({ ...current, sort }))}
                   />
                 </DiscoveryControls>
               </div>

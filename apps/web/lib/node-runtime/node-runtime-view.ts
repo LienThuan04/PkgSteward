@@ -1,4 +1,5 @@
 import { createListTextMatcher } from "../ui/list-discovery.ts"
+import { createDiscoveryCodec, isEnumArray, isEnumValue } from "../ui/discovery-state.ts"
 import type {
   ManagerCommandSuggestion,
   NodeCompatibilityStatus,
@@ -14,6 +15,24 @@ export const NODE_STATUS_ORDER: readonly NodeCompatibilityStatus[] = [
   "compatible",
   "undeclared",
 ]
+
+interface NodeRuntimeDiscovery {
+  query: string
+  statuses: readonly NodeCompatibilityStatus[]
+  sort: NodeProjectSort
+}
+
+export const NODE_RUNTIME_DISCOVERY: NodeRuntimeDiscovery = {
+  query: "",
+  statuses: [],
+  sort: "priority",
+}
+
+export const nodeRuntimeDiscoveryCodec = createDiscoveryCodec(
+  NODE_RUNTIME_DISCOVERY,
+  raw => isEnumArray(raw.statuses, NODE_STATUS_ORDER) &&
+    isEnumValue(raw.sort, ["priority", "name"] as const),
+)
 
 const STATUS_PRIORITY: Record<NodeCompatibilityStatus, number> = {
   mismatch: 0,
@@ -50,11 +69,7 @@ function compareText(a: string, b: string): number {
 
 export function filterAndSortNodeProjects(
   projects: readonly ProjectNodeCompatibility[],
-  options: {
-    query: string
-    statuses: readonly NodeCompatibilityStatus[]
-    sort: NodeProjectSort
-  },
+  options: NodeRuntimeDiscovery,
 ): ProjectNodeCompatibility[] {
   const matchesText = createListTextMatcher(options.query)
   const statusSet =

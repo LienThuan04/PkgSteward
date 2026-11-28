@@ -1,11 +1,50 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import { createNavigationStore } from "../ui/navigation-store.ts"
+import { makeViewStateKey } from "../ui/navigation-targets.ts"
 import {
   countNodeProjectsByStatus,
   filterAndSortNodeProjects,
+  NODE_RUNTIME_DISCOVERY,
+  nodeRuntimeDiscoveryCodec,
   pickPrimaryCommand,
 } from "./node-runtime-view.ts"
+
+test("Node Runtime restores the same filter and result order after returning to the list", () => {
+  const key = makeViewStateKey("node-runtime-list")
+  const store = createNavigationStore()
+  store.hydrate()
+  store.setActiveNavigation("overview", "/node-runtime")
+  assert.equal(store.readViewState(key, nodeRuntimeDiscoveryCodec), null)
+  assert.deepEqual(NODE_RUNTIME_DISCOVERY, { query: "", statuses: [], sort: "priority" })
+
+  const selection = { query: "TEST", statuses: ["compatible", "undeclared"], sort: "name" }
+  store.writeViewState(key, nodeRuntimeDiscoveryCodec, selection)
+  store.setActiveNavigation("detail", "/projects?path=D%3A%5CTEST%5Cbeta-mismatch")
+  store.setActiveNavigation("return", "/node-runtime")
+
+  const restored = store.readViewState(key, nodeRuntimeDiscoveryCodec)
+  assert.deepEqual(restored, selection)
+  assert.deepEqual(filterAndSortNodeProjects(sampleProjects, restored).map(project => project.name), [
+    "alpha-undeclared",
+    "zebra-compatible",
+  ])
+  store.clearViewState(key)
+  assert.equal(store.readViewState(key, nodeRuntimeDiscoveryCodec), null)
+})
+
+test("Node Runtime discovery state rejects invalid or unrelated fields", () => {
+  for (const invalid of [
+    { ...NODE_RUNTIME_DISCOVERY, query: "q".repeat(513) },
+    { ...NODE_RUNTIME_DISCOVERY, statuses: ["compatible", "compatible"] },
+    { ...NODE_RUNTIME_DISCOVERY, statuses: ["invalid"] },
+    { ...NODE_RUNTIME_DISCOVERY, sort: "activity" },
+    { ...NODE_RUNTIME_DISCOVERY, project: sampleProjects[0] },
+  ]) {
+    assert.equal(nodeRuntimeDiscoveryCodec.decode(invalid), null)
+  }
+})
 
 // TEST data; not business requirements.
 const sampleProjects = [
