@@ -30,6 +30,68 @@ function setupFakeLauncher(t, cliSource) {
   return { launcher, cli, eventsFile };
 }
 
+test('user interruption events stop the root launcher and its app processes', (t) => {
+  const { launcher, cli, eventsFile } = setupFakeLauncher(t, [
+    "const { appendFileSync } = require('node:fs');",
+    "const { basename } = require('node:path');",
+    'const app = basename(process.cwd());',
+    "appendFileSync(process.env.TEST_EVENTS_FILE, app + ':' + process.pid + '\\n');",
+    "if (app === 'api') {",
+    "  console.log(process.env.TEST_PHASE === 'waiting' ? 'TEST waiting for readiness' : 'Application is running on: http://127.0.0.1:24681/api/v1');",
+    '} else {',
+    "  console.log('Ready in 10 ms');",
+    '}',
+    "setTimeout(() => { console.log('TEST fallback exit'); process.exit(99); }, 10000);",
+  ].join('\n'));
+  const preload = join(dirname(launcher), 'interrupt.cjs');
+  // Inject the registered event after observed output, without OS signal-delivery differences.
+  writeFileSync(preload, [
+    'const write = process.stdout.write.bind(process.stdout);',
+    "const marker = process.env.TEST_PHASE === 'waiting' ? '[api] TEST waiting for readiness' : '[web] Ready in 10 ms';",
+    'let interrupted = false;',
+    'process.stdout.write = function (chunk, ...args) {',
+    '  const result = write(chunk, ...args);',
+    '  if (!interrupted && String(chunk).includes(marker)) {',
+    '    interrupted = true;',
+    '    queueMicrotask(() => process.emit(process.env.TEST_SIGNAL));',
+    '  }',
+    '  return result;',
+    '};',
+  ].join('\n'));
+
+  for (const mode of ['dev', 'start']) {
+    for (const phase of ['waiting', 'ready']) {
+      for (const signal of ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP']) {
+        writeFileSync(eventsFile, '');
+        const result = spawnSync(process.execPath, ['--require', preload, launcher, mode], {
+          env: {
+            ...process.env,
+            npm_execpath: cli,
+            npm_config_user_agent: 'yarn/1',
+            PKGSTEWARD_NO_BROWSER: '1',
+            PKGSTEWARD_STARTUP_TIMEOUT_MS: String(startupTimeoutMs),
+            TEST_EVENTS_FILE: eventsFile,
+            TEST_PHASE: phase,
+            TEST_SIGNAL: signal,
+          },
+          encoding: 'utf8',
+          timeout: 15000,
+        });
+        const context = `${mode}/${phase}/${signal}`;
+        assert.equal(result.error, undefined, context);
+        assert.equal(result.status, 0, context + result.stderr);
+        assert.doesNotMatch(result.stdout, /TEST fallback exit/, context);
+        assert.doesNotMatch(result.stderr, /did not become ready|stopped \(exit code/, context);
+        const children = readFileSync(eventsFile, 'utf8').trim().split(/\r?\n/).map(line => line.split(':'));
+        assert.deepEqual(children.map(([app]) => app), phase === 'waiting' ? ['api'] : ['api', 'web'], context);
+        for (const [, pid] of children) {
+          assert.throws(() => process.kill(Number(pid), 0), { code: 'ESRCH' }, context);
+        }
+      }
+    }
+  }
+});
+
 test('root launcher rejects unknown commands before starting an app', (t) => {
   const { launcher, cli } = setupFakeLauncher(t, "console.log('unexpected app launch'); process.exit(17);");
   for (const args of [[], ['deploy'], ['toString'], ['constructor'], ['__proto__']]) {
