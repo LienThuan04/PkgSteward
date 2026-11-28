@@ -269,6 +269,51 @@ test('startup times out a stalled app and stops each process it launched', (t) =
   }
 });
 
+test('root build finishes API before web and propagates either app failure', (t) => {
+  const { launcher, cli, eventsFile } = setupFakeLauncher(t, [
+    "const { appendFileSync } = require('node:fs');",
+    "const { basename } = require('node:path');",
+    'const app = basename(process.cwd());',
+    "appendFileSync(process.env.TEST_EVENTS_FILE, 'start:' + app + '\\n');",
+    "console.log('TEST args ' + JSON.stringify(process.argv.slice(2)));",
+    "process.on('exit', () => appendFileSync(process.env.TEST_EVENTS_FILE, 'finish:' + app + '\\n'));",
+    "if (process.env.TEST_FAIL_APP === app) process.exit(Number(process.env.TEST_EXIT_CODE));",
+  ].join('\n'));
+
+  for (const manager of ['npm', 'pnpm', 'yarn']) {
+    for (const [failingApp, exitCode, expectedEvents] of [
+      ['', 0, ['start:api', 'finish:api', 'start:web', 'finish:web']],
+      ['api', 23, ['start:api', 'finish:api']],
+      ['web', 42, ['start:api', 'finish:api', 'start:web', 'finish:web']],
+    ]) {
+      writeFileSync(eventsFile, '');
+      const result = spawnSync(process.execPath, [launcher, 'build'], {
+        env: {
+          ...process.env,
+          npm_execpath: cli,
+          npm_config_user_agent: manager + '/1',
+          TEST_EVENTS_FILE: eventsFile,
+          TEST_FAIL_APP: failingApp,
+          TEST_EXIT_CODE: String(exitCode),
+        },
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      const context = manager + '/' + (failingApp || 'success');
+      assert.equal(result.error, undefined, context);
+      assert.equal(result.status, exitCode, context + result.stderr);
+      assert.deepEqual(readFileSync(eventsFile, 'utf8').trim().split(/\r?\n/), expectedEvents, context);
+      const args = [...result.stdout.matchAll(/^TEST args (.+)$/gm)].map(match => JSON.parse(match[1]));
+      assert.deepEqual(args, Array(expectedEvents.length / 2).fill(['run', 'build']), context);
+      if (failingApp) {
+        assert.ok(result.stderr.includes(`${manager} run build failed in apps/${failingApp} (exit code ${exitCode})`), result.stderr);
+      } else {
+        assert.equal(result.stderr, '');
+      }
+    }
+  }
+});
+
 test('an invalid startup timeout fails before any app launches', (t) => {
   const { launcher, cli } = setupFakeLauncher(t, "console.log('unexpected app launch'); process.exit(17);");
   for (const timeout of ['0', '-1', '1.5', 'invalid', '2147483648']) {
