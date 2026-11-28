@@ -78,6 +78,12 @@ function findMissingDependency(app, appDir) {
     if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
       throw new TypeError('Expected a JSON object.');
     }
+    for (const field of ['dependencies', 'devDependencies']) {
+      if (Object.hasOwn(manifest, field) &&
+        (manifest[field] === null || typeof manifest[field] !== 'object' || Array.isArray(manifest[field]))) {
+        throw new TypeError(`${field} must be a JSON object.`);
+      }
+    }
   } catch (error) {
     console.error(`[run-apps] Invalid apps/${app}/package.json: ${error.message}`);
     process.exit(1);
@@ -92,9 +98,12 @@ function findMissingDependency(app, appDir) {
 }
 
 function ensureInstalled(apps) {
-  for (const [app] of apps) {
+  const checks = apps.map(([app]) => {
     const appDir = join(root, 'apps', app);
-    if (!findMissingDependency(app, appDir)) continue;
+    return { app, appDir, missing: findMissingDependency(app, appDir) };
+  });
+  for (const { app, appDir, missing: initialMissing } of checks) {
+    if (!initialMissing) continue;
     console.log(`\n[run-apps] ${manager} install in apps/${app}`);
     const result = spawnSync(command, installArgs, { cwd: appDir, stdio: 'inherit' });
     if (result.status !== 0) {

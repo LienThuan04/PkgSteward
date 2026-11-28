@@ -408,6 +408,56 @@ test('root launcher stops if a successful install leaves a dependency missing', 
   assert.equal(readFileSync(eventsFile, 'utf8').trim(), 'install');
 });
 
+test('root launcher rejects invalid dependency maps before any install or task', (t) => {
+  const { launcher, cli } = setupFakeLauncher(t, "console.log('unexpected command');");
+  const apps = join(dirname(launcher), '..', 'apps');
+  for (const app of ['api', 'web']) {
+    for (const field of ['dependencies', 'devDependencies']) {
+      for (const value of [null, [], ['fixture'], 'fixture', 1, true]) {
+        writeFileSync(join(apps, 'api', 'package.json'), JSON.stringify({ dependencies: { missing: '1.0.0' } }));
+        writeFileSync(join(apps, 'web', 'package.json'), '{}');
+        writeFileSync(join(apps, app, 'package.json'), JSON.stringify({ [field]: value }));
+        for (const mode of ['build', 'dev', 'start']) {
+          const result = spawnSync(process.execPath, [launcher, mode], {
+            env: { ...process.env, npm_execpath: cli, npm_config_user_agent: 'pnpm/11', PKGSTEWARD_NO_BROWSER: '1' },
+            encoding: 'utf8',
+            timeout: 5000,
+          });
+          assert.equal(result.error, undefined);
+          assert.equal(result.status, 1);
+          assert.ok(result.stderr.includes(`Invalid apps/${app}/package.json: ${field} must be a JSON object.`), result.stderr);
+          assert.equal(result.stdout, '');
+        }
+      }
+    }
+  }
+});
+
+test('root launcher accepts omitted and object dependency maps', (t) => {
+  const { launcher, cli } = setupFakeLauncher(t, "console.log('fixture build');");
+  const apps = join(dirname(launcher), '..', 'apps');
+  for (const app of ['api', 'web']) {
+    const dependency = join(apps, app, 'node_modules', '@fixture', 'installed');
+    mkdirSync(dependency, { recursive: true });
+    writeFileSync(join(dependency, 'package.json'), '{}');
+  }
+  for (const manifest of [{}, { dependencies: {}, devDependencies: {} }, {
+    dependencies: { '@fixture/installed': '1.0.0' },
+    devDependencies: { '@fixture/installed': '1.0.0' },
+  }]) {
+    for (const app of ['api', 'web']) writeFileSync(join(apps, app, 'package.json'), JSON.stringify(manifest));
+    const result = spawnSync(process.execPath, [launcher, 'build'], {
+      env: { ...process.env, npm_execpath: cli, npm_config_user_agent: 'pnpm/11' },
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.match(/fixture build/g)?.length, 2);
+    assert.doesNotMatch(result.stdout, /install in/);
+  }
+});
+
 test('root launcher identifies an invalid app manifest before running a task', (t) => {
   const { launcher, cli } = setupFakeLauncher(t, "console.log('unexpected command');");
   const manifest = join(dirname(launcher), '..', 'apps', 'web', 'package.json');
